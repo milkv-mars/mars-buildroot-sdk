@@ -1,0 +1,14 @@
+config BR2_PACKAGE_V4L2_DEC_TEST
+	bool "v4l2 decode test"
+	depends on BR2_PACKAGE_SF_OMX_IL && BR2_PACKAGE_FFMPEG
+	depends on BR2_TOOLCHAIN_HAS_THREADS # libv4l
+	depends on BR2_USE_MMU # libv4l
+	depends on !BR2_STATIC_LIBS # libv4l
+	depends on BR2_INSTALL_LIBSTDCPP # libv4l
+	depends on BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_0 # libv4l
+	select BR2_PACKAGE_LIBV4L
+	help
+	  v4l2 decoder package
+
+comment "v4l2 decoder package requires ffmpeg implementation"
+	depends on !BR2_PACKAGE_FFMPEG
