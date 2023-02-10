@@ -80,6 +80,7 @@ typedef struct DecodeTestContext
     buffer InputBufArray[MAX_BUF_CNT];
     buffer OutputBufArray[MAX_BUF_CNT];
     AVFormatContext *avContext;
+    int32_t  video_stream_idx;
 } DecodeTestContext;
 DecodeTestContext *decodeTestContext;
 struct v4l2_plane *gInput_v4l2_plane;
@@ -153,9 +154,16 @@ static int32_t FillInputBuffer(DecodeTestContext *decodeTestContext, struct v4l2
 {
     AVFormatContext *avFormatContext = decodeTestContext->avContext;
     AVPacket *avpacket;
-    int32_t error;
+    int32_t error = 0;
     avpacket = av_packet_alloc();
-    error = av_read_frame(avFormatContext, avpacket);
+    while (error >= 0)
+    {
+        error = av_read_frame(avFormatContext, avpacket);
+        if (avpacket->stream_index == decodeTestContext->video_stream_idx)
+            break;
+        printf("get audio frame\n");
+    }
+
     if (error < 0)
     {
         if (error == AVERROR_EOF || avFormatContext->pb->eof_reached)
@@ -555,6 +563,7 @@ int main(int argc, char **argv)
         return -1;
     }
     printf("video index = %d\r\n", videoIndex);
+    decodeTestContext->video_stream_idx = videoIndex;
     decodeTestContext->avContext = avContext;
     /*get video info*/
     codecParameters = avContext->streams[videoIndex]->codecpar;
