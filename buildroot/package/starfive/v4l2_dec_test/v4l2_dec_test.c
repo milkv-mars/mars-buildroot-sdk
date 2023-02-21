@@ -92,6 +92,7 @@ static int32_t FillInputBuffer(DecodeTestContext *decodeTestContext, struct v4l2
 
 static bool justQuit = false;
 static bool bitsteamEnd = false;
+static bool testFPS =false;
 static FILE *fb = NULL;
 
 static int xioctl(int fd, int request, void* argp)
@@ -193,13 +194,15 @@ static int32_t FillInputBuffer(DecodeTestContext *decodeTestContext, struct v4l2
 
 static void mainloop()
 {
-    int r, i, j;
+    int r, i, j, fps, dec_cnt = 0;
+    uint64_t diff_time;
     struct pollfd* fds = NULL;
     struct v4l2_event event;
     struct v4l2_format fmt;
     struct v4l2_requestbuffers req;
     struct v4l2_buffer buf;
     struct v4l2_plane planes[MAX_PLANES];
+    struct timeval tv_old, tv;
     enum v4l2_buf_type type;
 
     fds = (struct pollfd*)malloc(sizeof(struct pollfd));
@@ -355,9 +358,26 @@ static void mainloop()
                 break;
             }
 
-            for (i = 0; i < buf.length; i++){
-                fwrite(decodeTestContext->OutputBufArray[buf.index].start[i], 1, buf.m.planes[i].bytesused, fb);
+            if (testFPS)
+            {
+                if (dec_cnt == 0) {
+                    gettimeofday(&tv_old, NULL);
+                }
+                if (dec_cnt++ >= 50) {
+                    gettimeofday(&tv, NULL);
+                    diff_time = (tv.tv_sec - tv_old.tv_sec) * 1000 + (tv.tv_usec - tv_old.tv_usec) / 1000;
+                    fps = 1000  * (dec_cnt - 1) / diff_time;
+                    dec_cnt = 0;
+                    printf("Decoding fps: %d \r\n", fps);
+                }
             }
+            else
+            {
+                for (i = 0; i < buf.length; i++){
+                    fwrite(decodeTestContext->OutputBufArray[buf.index].start[i], 1, buf.m.planes[i].bytesused, fb);
+                }
+            }
+ 
             if (-1 == xioctl(decodeTestContext->fd, VIDIOC_QBUF, &buf)) {
                 printf("VIDIOC_QBUF fail\n");
                 break;
@@ -446,10 +466,11 @@ int main(int argc, char **argv)
         {"format", required_argument, NULL, 'f'},
         {"scaleW", required_argument, NULL, 'w'},
         {"scaleH", required_argument, NULL, 'h'},
+        {"test", required_argument, NULL, 't'},
         {"help", no_argument, NULL, '0'},
         {NULL, no_argument, NULL, 0},
     };
-    char *shortOpt = "i:o:f:w:h:";
+    char *shortOpt = "i:o:f:w:h:t";
     uint32_t c;
     int32_t l;
 
@@ -490,6 +511,9 @@ int main(int argc, char **argv)
         case 'h':
             printf("ScaleHeight: %s\r\n", optarg);
             decodeTestContext->ScaleHeight = atoi(optarg);
+            break;
+        case 't':
+            testFPS = true;
             break;
         case '0':
         default:
