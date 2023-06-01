@@ -1,0 +1,25 @@
+From e459a97de18c9da6f946a6d58555486de4d6500b Mon Sep 17 00:00:00 2001
+From: Brendan King <Brendan.King@imgtec.com>
+Date: Sat, 12 Jun 2021 16:50:01 +0100
+Subject: [PATCH 4/5] tests: test-client depends on libudev
+
+Source file weston-test-fixture-compositor.c includes libudev.h.
+---
+ tests/meson.build | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/meson.build b/tests/meson.build
+index d8e96e77..195366bb 100644
+--- a/tests/meson.build
++++ b/tests/meson.build
+@@ -43,6 +43,7 @@ lib_test_client = static_library(
+ 		dep_libexec_weston,
+ 		dep_pixman,
+ 		dependency('cairo'),
++		dependency('libudev'),
+ 	],
+ 	install: false,
+ )
+-- 
+2.25.1
+

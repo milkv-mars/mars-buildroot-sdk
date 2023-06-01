@@ -1,0 +1,33 @@
+From 2039ca706c9578e339dafa84b842559af86d7a11 Mon Sep 17 00:00:00 2001
+From: Brendan King <Brendan.King@imgtec.com>
+Date: Thu, 28 Mar 2019 12:58:10 +0000
+Subject: [PATCH 2/5] meson: fix failure to find libudev when linking the
+ compositor
+
+The compositor links against libinput, which in turn is linked against
+libudev. When the compositor is linked, it has a dependency on libinput,
+but not libudev. Whilst this is correct, it means the linker won't be
+able to find libudev if the library is in a non-standard place (i.e.
+a place where the linker wouldn't normally look).
+
+Workaround the problem by adding libudev as a dependency for the
+compositor.
+---
+ compositor/meson.build | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/compositor/meson.build b/compositor/meson.build
+index 8a54ea99..11a6c59b 100644
+--- a/compositor/meson.build
++++ b/compositor/meson.build
+@@ -17,6 +17,7 @@ deps_weston = [
+ 	dep_libevdev,
+ 	dep_libdl,
+ 	dep_threads,
++	dependency('libudev'),
+ ]
+ 
+ if get_option('xwayland')
+-- 
+2.25.1
+

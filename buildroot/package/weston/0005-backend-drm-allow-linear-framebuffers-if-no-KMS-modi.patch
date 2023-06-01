@@ -1,0 +1,53 @@
+From 386618c7f40b9a5ad93b0c68a622ea38a63378c6 Mon Sep 17 00:00:00 2001
+From: Brendan King <Brendan.King@imgtec.com>
+Date: Wed, 20 Apr 2022 11:56:50 +0000
+Subject: [PATCH 5/5] backend-drm: allow linear framebuffers if no KMS modifier
+ support
+
+If KMS doesn't support modifiers, but a framebuffer is supplied via
+a dmabuf with a linear modifier, assume the buffer is compatible with
+KMS. This scenario can occur when different drivers are used for the
+GPU and KMS, and the GPU driver supports modifiers.
+
+Some platforms used internally by IMG, such as the Acer R13 Chromebook,
+have KMS drivers that don't support modifiers. Without this change,
+applications such as weston-simple-egl cannot keep up with vsync.
+This problem didn't occur with older versions of Weston (e.g, 9.0.0).
+
+This change can be dropped for platforms where KMS supports modifiers.
+
+The change that prompted this one was:
+
+    commit 567cc92797846081506ccb36e6af99884a8b6cf2
+    Author: Leandro Ribeiro <leandro.ribeiro@collabora.com>
+    Date:   Wed Apr 21 11:44:53 2021 -0300
+
+    backend-drm: add DRM_FORMAT_MOD_INVALID to modifier sets when no
+                 modifiers are supported
+---
+ libweston/backend-drm/fb.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/libweston/backend-drm/fb.c b/libweston/backend-drm/fb.c
+index 3c664779..c59e0a99 100644
+--- a/libweston/backend-drm/fb.c
++++ b/libweston/backend-drm/fb.c
+@@ -489,6 +489,15 @@ drm_fb_compatible_with_plane(struct drm_fb *fb, struct drm_plane *plane)
+ 
+ 		if (weston_drm_format_has_modifier(fmt, fb->modifier))
+ 			return true;
++
++                /* KMS doesn't support modifiers, but we've been sent a dmabuf
++                 * with a linear modifier. This can happen if different drivers
++                 * are used for the GPU and KMS, and the GPU driver supports
++                 * modifiers. Assume this is valid combination. */
++                if (fb->modifier == DRM_FORMAT_MOD_LINEAR &&
++                    weston_drm_format_has_modifier(fmt, DRM_FORMAT_MOD_INVALID))
++                        return true;
++
+ 	}
+ 
+ 	drm_debug(b, "\t\t\t\t[%s] not placing view on %s: "
+-- 
+2.25.1
+
