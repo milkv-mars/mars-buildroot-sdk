@@ -21,6 +21,13 @@ WESTON_CONF_OPTS = \
 	-Dremoting=false \
 	-Dtools=calibrator,debug,info,terminal,touch-calibrator
 
+# For weston 10, support for the deprecated wl_shell interface is now disabled by default
+# It will be removed in a future release, re-enable it with the Meson option
+#  -Ddeprecated-wl-shell=true
+# link: https://www.mail-archive.com/wayland-devel@lists.freedesktop.org/msg41415.html
+# Enable it for the VK-GL-CTS still use wl_shell API
+WESTON_CONF_OPTS += -Ddeprecated-wl-shell=true
+
 # Uses VIDIOC_EXPBUF, only available from 3.8+
 ifeq ($(BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_8),y)
 WESTON_CONF_OPTS += -Dsimple-clients=dmabuf-v4l
