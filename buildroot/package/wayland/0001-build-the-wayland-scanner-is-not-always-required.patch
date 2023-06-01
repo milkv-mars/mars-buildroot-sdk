@@ -1,0 +1,44 @@
+From d58695c5a49e3279cd45037b3219c1387c91868c Mon Sep 17 00:00:00 2001
+From: Brendan King <Brendan.King@imgtec.com>
+Date: Wed, 18 May 2022 12:14:56 +0100
+Subject: [PATCH] build: the wayland scanner is not always required
+
+The Wayland Scanner is only needed if the libraries or tests are
+being built.
+
+In the IMG DDK build system, Wayland is built twice, once for the build
+machine, and once for the host. The build machine version only builds
+the Wayland Scanner which is used to build the host version. Both builds
+use a cross build definition file, and so are cross builds.
+
+Without this change, it is not possible to build Wayland Scanner for the
+build machine, unless a Wayland Scanner is already installed.
+
+The indentation within the new "if" block hasn't been altered to minimise
+the diff.
+---
+ src/meson.build | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/meson.build b/src/meson.build
+index a8a1d2b..ed35ea9 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -77,12 +77,14 @@ if get_option('scanner')
+ 	endif
+ endif
+ 
++if get_option('libraries') or get_option('tests')
+ if meson.is_cross_build() or not get_option('scanner')
+ 	scanner_dep = dependency('wayland-scanner', native: true, version: meson.project_version())
+ 	wayland_scanner_for_build = find_program(scanner_dep.get_variable(pkgconfig: 'wayland_scanner'))
+ else
+ 	wayland_scanner_for_build = wayland_scanner
+ endif
++endif
+ 
+ if get_option('libraries')
+ 	# wayland libraries
+-- 
+2.25.1
+
