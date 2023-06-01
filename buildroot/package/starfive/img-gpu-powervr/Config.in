@@ -17,7 +17,7 @@ config BR2_PACKAGE_IMG_GPU_POWERVR
 	select BR2_PACKAGE_HAS_LIBVULKAN
 	select BR2_PACKAGE_MESA3D
 	select BR2_PACKAGE_MESA3D_OPENGL_EGL
-	select BR2_PACKAGE_MESA3D_DRI_DRIVER_PVR
+	select BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_PVR
 	help
 	  Userspace libraries for Imagination PowerGPU GPU on StarFive platforms
 
