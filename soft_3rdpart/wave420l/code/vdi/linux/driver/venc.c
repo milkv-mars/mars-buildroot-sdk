@@ -1079,6 +1079,7 @@ static int vpu_probe(struct platform_device *pdev)
 	int err = 0;
 	struct resource *res = NULL;
 	struct device *devices;
+	int irq = -1;
 
 	DPRINTK("[VPUDRV] vpu_probe\n");
 
@@ -1149,9 +1150,9 @@ static int vpu_probe(struct platform_device *pdev)
 #ifdef VPU_SUPPORT_ISR
 #ifdef VPU_SUPPORT_PLATFORM_DRIVER_REGISTER
 	if (pdev)
-		res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-	if (res) {/* if platform driver is implemented */
-		s_vpu_irq = res->start;
+		irq = platform_get_irq(pdev, 0);
+	if (irq >= 0) {/* if platform driver is implemented */
+		s_vpu_irq = irq;
 		DPRINTK("[VPUDRV] : vpu irq number get from platform driver irq=0x%x\n", s_vpu_irq);
 	} else {
 		DPRINTK("[VPUDRV] : vpu irq number get from defined value irq=0x%x\n", s_vpu_irq);
