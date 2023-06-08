@@ -852,6 +852,7 @@ static int jpu_probe(struct platform_device *pdev)
 	struct resource res_cma;
 	struct device_node *node;
 #endif
+	int irq = -1;
 
     DPRINTK("[JPUDRV] jpu_probe\n");
     if (pdev) {
@@ -923,9 +924,9 @@ static int jpu_probe(struct platform_device *pdev)
 #ifdef JPU_SUPPORT_ISR
 #ifdef JPU_SUPPORT_PLATFORM_DRIVER_REGISTER
     if(pdev)
-        res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-    if (res) {/* if platform driver is implemented */
-        s_jpu_irq = res->start;
+        irq = platform_get_irq(pdev, 0);
+    if (irq >= 0) {/* if platform driver is implemented */
+        s_jpu_irq = irq;
         DPRINTK("[JPUDRV] : jpu irq number get from platform driver irq=0x%x\n", s_jpu_irq );
     } else {
         DPRINTK("[JPUDRV] : jpu irq number get from defined value irq=0x%x\n", s_jpu_irq );
