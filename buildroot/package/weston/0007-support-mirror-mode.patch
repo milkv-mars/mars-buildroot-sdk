@@ -1,0 +1,510 @@
+Weston support mirror mode.Use 'export WESTON_ENABLE_MIRROR=1' to enable mirror mode.
+
+Signed-off-by: Leo Lu <leo.lu@starfivetech.com>
+
+
+--- a/clients/desktop-shell.c	2023-06-12 20:36:17.698156132 +0800
++++ b/clients/desktop-shell.c	2023-06-13 15:21:06.196116306 +0800
+@@ -1060,9 +1060,14 @@ desktop_shell_configure(void *data,
+ 			struct wl_surface *surface,
+ 			int32_t width, int32_t height)
+ {
+-	struct window *window = wl_surface_get_user_data(surface);
+-	struct surface *s = window_get_user_data(window);
++	struct window *window;
++	struct surface *s;
+ 
++	if (!surface)
++		return;
++
++	window = wl_surface_get_user_data(surface);
++	s = window_get_user_data(window);
+ 	s->configure(data, desktop_shell, edges, window, width, height);
+ }
+ 
+--- a/desktop-shell/shell.c	2023-06-12 20:36:17.702156089 +0800
++++ b/desktop-shell/shell.c	2023-06-13 15:21:06.208116334 +0800
+@@ -4263,6 +4263,9 @@ weston_view_set_initial_position(struct
+ 	}
+ 
+ 	wl_list_for_each(output, &compositor->output_list, link) {
++		if (output->unavailable)
++			continue;
++
+ 		if (pixman_region32_contains_point(&output->region, ix, iy, NULL)) {
+ 			target_output = output;
+ 			break;
+--- a/include/libweston/libweston.h	2023-06-12 20:36:17.702156089 +0800
++++ b/include/libweston/libweston.h	2023-06-13 15:21:06.224116373 +0800
+@@ -411,7 +411,11 @@ struct weston_output {
+ 	 */
+ 	void (*detach_head)(struct weston_output *output,
+ 			    struct weston_head *head);
++
++	bool unavailable;
+ };
++#define weston_output_valid(o) \
++	((o) && !(o)->destroying && !(o)->unavailable)
+ 
+ enum weston_pointer_motion_mask {
+ 	WESTON_POINTER_MOTION_ABS = 1 << 0,
+--- a/libweston/backend-drm/drm.c	2023-06-12 20:36:17.706156047 +0800
++++ b/libweston/backend-drm/drm.c	2023-06-13 15:21:06.236116402 +0800
+@@ -67,6 +67,7 @@
+ #include "linux-explicit-synchronization.h"
+ #include <libweston/config-parser.h>
+ 
++
+ static const char default_seat[] = "seat0";
+ static inline bool
+ drm_head_is_external(struct drm_head *head)
+@@ -86,7 +87,7 @@ drm_head_is_external(struct drm_head *he
+ static void
+ drm_backend_update_outputs(struct drm_backend *b)
+ {
+-	struct weston_output *primary;
++	struct weston_output *primary,*base;
+ 	struct weston_output *output;
+ 	int x, y, next_x, next_y;
+ 	next_x = next_y = 0;
+@@ -94,6 +95,26 @@ drm_backend_update_outputs(struct drm_ba
+ 		return;
+ 
+ 	primary = b->primary_head->base.output;
++
++	if (b->mirror_mode) {
++		wl_list_for_each(base, &b->compositor->output_list, link) {
++			struct drm_output *output = to_drm_output(base);
++			bool is_mirror = base != primary;
++
++			if (output->is_mirror == is_mirror)
++				continue;
++
++			/* Make mirrors unavailable for normal views */
++			output->base.unavailable = is_mirror;
++
++			output->is_mirror = is_mirror;
++			output->state_invalid = true;
++
++			weston_log("Output %s changed to %s output\n",
++				   base->name, is_mirror ? "mirror" : "main");
++		}
++	}
++
+ 	if (!primary)
+ 		return;
+ 
+@@ -394,6 +415,45 @@ drm_output_render_pixman(struct drm_outp
+ 	return drm_fb_ref(output->dumb[output->current_image]);
+ }
+ 
++static struct drm_fb *
++drm_output_get_fb(struct drm_pending_state *pending_state,
++		  struct weston_output *output_base)
++{
++	struct drm_output *output = to_drm_output(output_base);
++	struct drm_plane_state *scanout_state;
++	struct drm_output_state *state;
++	struct drm_fb *fb = output->scanout_plane->state_cur->fb;
++
++	state = drm_pending_state_get_output(pending_state, output);
++	if (!state)
++		return fb;
++
++	scanout_state =
++		drm_output_state_get_existing_plane(state,
++						    output->scanout_plane);
++	if (!scanout_state || !scanout_state->fb)
++		return fb;
++
++	return scanout_state->fb;
++}
++
++static void
++drm_output_try_destroy_wrap_fb(struct drm_output *output)
++{
++	if (output->wrap[0]) {
++		drm_fb_unref(output->wrap[0]);
++		output->wrap[0] = NULL;
++	}
++
++	if (output->wrap[1]) {
++		drm_fb_unref(output->wrap[1]);
++		output->wrap[1] = NULL;
++	}
++
++	output->next_wrap = 0;
++}
++
++
+ void
+ drm_output_render(struct drm_output_state *state, pixman_region32_t *damage)
+ {
+@@ -404,17 +464,48 @@ drm_output_render(struct drm_output_stat
+ 	struct drm_property_info *damage_info =
+ 		&scanout_plane->props[WDRM_PLANE_FB_DAMAGE_CLIPS];
+ 	struct drm_backend *b = to_drm_backend(c);
+-	struct drm_fb *fb;
++	struct drm_mode *mode;
++	struct drm_fb *fb = NULL;
+ 	pixman_region32_t scanout_damage;
+ 	pixman_box32_t *rects;
+ 	int n_rects;
+-
++	int sw, sh, dx, dy, dw, dh;
++	float scale_rate ;
++	int scale_w , scale_h;
+ 	/* If we already have a client buffer promoted to scanout, then we don't
+ 	 * want to render. */
+ 	scanout_state = drm_output_state_get_plane(state, scanout_plane);
+ 	if (scanout_state->fb)
+ 		return;
+ 
++	if (!output->is_mirror) {
++		struct drm_output *tmp;
++
++		/* Repaint all mirrors when updating main output */
++		wl_list_for_each(tmp, &b->compositor->output_list, base.link)
++			if (tmp->is_mirror)
++				weston_output_schedule_repaint(&tmp->base);
++	} else {
++		if (!b->primary_head)
++			goto out;
++
++
++		fb = drm_output_get_fb(state->pending_state,
++				       b->primary_head->base.output);
++		if (fb) {
++			drm_fb_ref(fb);
++
++			pixman_region32_init(&scanout_damage);
++			wl_signal_emit(&output->base.frame_signal,
++				       &scanout_damage);
++			pixman_region32_fini(&scanout_damage);
++		} else {
++			weston_compositor_damage_all(b->compositor);
++		}
++
++		goto out;
++	}
++
+ 	/*
+ 	 * If we don't have any damage on the primary plane, and we already
+ 	 * have a renderer buffer active, we can reuse it; else we pass
+@@ -433,25 +524,57 @@ drm_output_render(struct drm_output_stat
+ 	} else {
+ 		fb = drm_output_render_gl(state, damage);
+ 	}
+-
++out:
+ 	if (!fb) {
+ 		drm_plane_state_put_back(scanout_state);
+ 		return;
+ 	}
+ 
++	sw = fb->width;
++	sh = fb->height;
++
++	dx = output->plane_bounds.x1;
++	dy = output->plane_bounds.y1;
++	dw = output->plane_bounds.x2 - output->plane_bounds.x1;
++	dh = output->plane_bounds.y2 - output->plane_bounds.y1;
++
++	if (!dw || !dh) {
++		mode = to_drm_mode(output->base.current_mode);
++		dw = mode->mode_info.hdisplay;
++		dh = mode->mode_info.vdisplay;
++	}
++
++	if(sw != dw || sh != dh) {	
++		scale_rate =(float ) sw / (float) sh ;
++		scale_h = (float)  dw / scale_rate;
++	    if(scale_h <= dh)
++			dh = scale_h;
++		else {
++			scale_w = dh * scale_rate ;
++			if(scale_w <= dw)
++				dw = scale_w;
++		}
++	}
++	else {
++		dw = sw;
++		dh = sh;
++	}
++
+ 	scanout_state->fb = fb;
+ 	scanout_state->output = output;
+-
++	fb = NULL ;
+ 	scanout_state->src_x = 0;
+ 	scanout_state->src_y = 0;
+-	scanout_state->src_w = fb->width << 16;
+-	scanout_state->src_h = fb->height << 16;
++	scanout_state->src_w = sw << 16;
++	scanout_state->src_h = sh << 16;
+ 
+-	scanout_state->dest_x = 0;
+-	scanout_state->dest_y = 0;
+-	scanout_state->dest_w = output->base.current_mode->width;
+-	scanout_state->dest_h = output->base.current_mode->height;
++	scanout_state->dest_x = dx;
++	scanout_state->dest_x = dy;
++	scanout_state->dest_w = dw;
++	scanout_state->dest_h = dh;
+ 
++	if (output->is_mirror)
++		return;
+ 	pixman_region32_subtract(&c->primary_plane.damage,
+ 				 &c->primary_plane.damage, damage);
+ 
+@@ -499,6 +622,7 @@ drm_output_render(struct drm_output_stat
+ 				  &scanout_state->damage_blob_id);
+ 
+ 	pixman_region32_fini(&scanout_damage);
++
+ }
+ 
+ static int
+@@ -1275,8 +1399,8 @@ drm_output_fini_pixman(struct drm_output
+ 	/* Destroying the Pixman surface will destroy all our buffers,
+ 	 * regardless of refcount. Ensure we destroy them here. */
+ 	if (!b->shutting_down &&
+-	    output->scanout_plane->state_cur->fb &&
+-	    output->scanout_plane->state_cur->fb->type == BUFFER_PIXMAN_DUMB) {
++	    output->scanout_plane->state_cur->fb && (output->is_mirror ||
++	    output->scanout_plane->state_cur->fb->type == BUFFER_PIXMAN_DUMB)) {
+ 		drm_plane_reset_state(output->scanout_plane);
+ 	}
+ 
+@@ -1955,6 +2079,8 @@ drm_output_destroy(struct weston_output
+ 	assert(!output->state_last);
+ 	drm_output_state_free(output->state_cur);
+ 
++	drm_output_try_destroy_wrap_fb(output);
++
+ 	free(output);
+ }
+ 
+@@ -3155,6 +3281,7 @@ drm_backend_create(struct weston_composi
+ 	enum drm_head_mode head_mode = DRM_HEAD_MODE_DEFAULT;
+ 	drmModeRes *res;
+ 	int ret;
++	char * buf;
+ 
+ 	session_seat = getenv("XDG_SEAT");
+ 	if (session_seat)
+@@ -3172,6 +3299,13 @@ drm_backend_create(struct weston_composi
+ 
+ 	b->head_matches = drm_head_matches[head_mode];		
+ 
++	buf = getenv("WESTON_ENABLE_MIRROR");
++	if (buf && buf[0] == '1') {
++		b->mirror_mode = true;
++		weston_log("Entering mirror mode.\n");
++	}
++
++
+ 	b->state_invalid = true;
+ 	b->drm.fd = -1;
+ 
+@@ -3183,7 +3317,7 @@ drm_backend_create(struct weston_composi
+ 	b->debug = weston_compositor_add_log_scope(compositor, "drm-backend",
+ 						   "Debug messages from DRM/KMS backend\n",
+ 						   NULL, NULL, NULL);
+-
++ 
+ 	compositor->backend = &b->base;
+ 
+ 	if (parse_gbm_format(config->gbm_format, DRM_FORMAT_XRGB8888, &b->gbm_format) < 0)
+--- a/libweston/backend-drm/drm-gbm.c	2023-06-12 20:36:17.706156047 +0800
++++ b/libweston/backend-drm/drm-gbm.c	2023-06-13 15:21:06.240116411 +0800
+@@ -265,8 +265,8 @@ drm_output_fini_egl(struct drm_output *o
+ 	/* Destroying the GBM surface will destroy all our GBM buffers,
+ 	 * regardless of refcount. Ensure we destroy them here. */
+ 	if (!b->shutting_down &&
+-	    output->scanout_plane->state_cur->fb &&
+-	    output->scanout_plane->state_cur->fb->type == BUFFER_GBM_SURFACE) {
++	    output->scanout_plane->state_cur->fb && (output->is_mirror ||
++	    output->scanout_plane->state_cur->fb->type == BUFFER_GBM_SURFACE)) {
+ 		drm_plane_reset_state(output->scanout_plane);
+ 	}
+ 
+--- a/libweston/backend-drm/drm-internal.h	2023-06-12 20:36:17.706156047 +0800
++++ b/libweston/backend-drm/drm-internal.h	2023-06-13 15:21:06.240116411 +0800
+@@ -326,6 +326,8 @@ struct drm_backend {
+  	drm_head_match_t *head_matches;
+  	struct drm_head *primary_head;
+  	struct wl_listener output_create_listener;
++
++	bool mirror_mode;
+ };
+ 
+ struct drm_mode {
+@@ -495,6 +497,7 @@ struct drm_plane {
+ 	struct wl_list link;
+ 
+ 	struct weston_drm_format_array formats;
++	bool can_scale;
+ };
+ 
+ struct drm_connector {
+@@ -581,6 +584,10 @@ struct drm_output {
+ 	int current_image;
+ 	pixman_region32_t previous_damage;
+ 
++	/* Wrap fb for scale/rotate usage */
++	struct drm_fb *wrap[2];
++	int next_wrap;
++
+ 	struct vaapi_recorder *recorder;
+ 	struct wl_listener recorder_frame_listener;
+ 
+@@ -590,6 +597,10 @@ struct drm_output {
+ 
+ 	submit_frame_cb virtual_submit_frame;
+ 	bool state_invalid;
++
++	bool is_mirror;
++
++	pixman_box32_t plane_bounds;
+ };
+ 
+ static inline struct drm_head *
+--- a/libweston/backend-drm/state-propose.c	2023-06-12 20:36:17.706156047 +0800
++++ b/libweston/backend-drm/state-propose.c	2023-06-13 15:21:06.240116411 +0800
+@@ -54,6 +54,21 @@ static const char *const drm_output_prop
+ 	[DRM_OUTPUT_PROPOSE_STATE_PLANES_ONLY]	= "plane-only state"
+ };
+ 
++static bool
++drm_is_mirroring(struct drm_backend *b)
++{
++	struct drm_output *tmp;
++
++	if (!b->mirror_mode)
++		return false;
++
++	wl_list_for_each(tmp, &b->compositor->output_list, base.link)
++		if (tmp->is_mirror)
++			return true;
++
++	return false;
++}
++
+ static const char *
+ drm_propose_state_mode_to_string(enum drm_output_propose_state_mode mode)
+ {
+@@ -466,7 +481,7 @@ drm_output_try_view_on_plane(struct drm_
+ 
+ 	switch (plane->type) {
+ 	case WDRM_PLANE_TYPE_CURSOR:
+-		if (b->cursors_are_broken) {
++		if (b->cursors_are_broken || drm_is_mirroring(b)) {
+ 			availability = NO_PLANES_ACCEPTED;
+ 			goto out;
+ 		}
+@@ -1102,7 +1117,10 @@ drm_assign_planes(struct weston_output *
+ 	drm_debug(b, "\t[repaint] preparing state for output %s (%lu)\n",
+ 		  output_base->name, (unsigned long) output_base->id);
+ 
+-	if (!b->sprites_are_broken && !output->virtual) {
++	/* Force single plane in mirror mode */
++	if (drm_is_mirroring(b)) {
++		drm_debug(b, "\t[state] no overlay plane in mirror mode\n");
++	} else if (!b->sprites_are_broken && !output->virtual) {
+ 		drm_debug(b, "\t[repaint] trying planes-only build state\n");
+ 		state = drm_output_propose_state(output_base, pending_state, mode);
+ 		if (!state) {
+--- a/libweston/compositor.c	2023-06-12 20:36:17.706156047 +0800
++++ b/libweston/compositor.c	2023-06-13 15:21:06.244116421 +0800
+@@ -1409,7 +1409,7 @@ weston_view_assign_output(struct weston_
+ 	}
+ 	pixman_region32_init(&region);
+ 	wl_list_for_each(output, &ec->output_list, link) {
+-		if (output->destroying)
++		if (!weston_output_valid(output))
+ 			continue;
+ 
+ 		pixman_region32_intersect(&region, &ev->transform.boundingbox,
+@@ -5213,6 +5213,9 @@ bind_output(struct wl_client *client,
+ static void
+ weston_head_add_global(struct weston_head *head)
+ {
++	if (head->global || !weston_output_valid(head->output))
++		return;
++
+ 	head->global = wl_global_create(head->compositor->wl_display,
+ 					&wl_output_interface, 3,
+ 					head, bind_output);
+@@ -5248,6 +5251,15 @@ weston_head_remove_global(struct weston_
+ 	wl_list_init(&head->xdg_output_resource_list);
+ }
+ 
++static void
++weston_head_update_global(struct weston_head *head)
++{
++	if (weston_output_valid(head->output))
++		weston_head_add_global(head);
++	else
++		weston_head_remove_global(head);
++}
++
+ /** Get the backing object of wl_output
+  *
+  * \param resource A wl_output protocol object.
+@@ -6045,12 +6057,18 @@ weston_compositor_reflow_outputs(struct
+ 				struct weston_output *resized_output, int delta_width)
+ {
+ 	struct weston_output *output;
++	struct weston_head *head;
+ 	bool start_resizing = false;
+ 
+ 	if (!delta_width)
+ 		return;
+ 
+ 	wl_list_for_each(output, &compositor->output_list, link) {
++		wl_list_for_each(head, &output->head_list, output_link)
++			weston_head_update_global(head);
++
++		if (!weston_output_valid(output))
++			continue;
+ 		if (output == resized_output) {
+ 			start_resizing = true;
+ 			continue;
+@@ -6265,11 +6283,11 @@ weston_compositor_add_output(struct west
+ 	wl_list_insert(compositor->output_list.prev, &output->link);
+ 	output->enabled = true;
+ 
++	wl_signal_emit(&compositor->output_created_signal, output);
++
+ 	wl_list_for_each(head, &output->head_list, output_link)
+ 		weston_head_add_global(head);
+ 
+-	wl_signal_emit(&compositor->output_created_signal, output);
+-
+ 	/*
+ 	 * Use view_list, as paint nodes have not been created for this
+ 	 * output yet. Any existing view might touch this new output.
+--- a/libweston/input.c	2023-06-12 20:36:17.706156047 +0800
++++ b/libweston/input.c	2023-06-13 15:21:06.244116421 +0800
+@@ -1688,6 +1688,10 @@ weston_pointer_clamp(struct weston_point
+ 	wl_list_for_each(output, &ec->output_list, link) {
+ 		if (pointer->seat->output && pointer->seat->output != output)
+ 			continue;
++
++		if (output->unavailable)
++			continue;
++
+ 		if (pixman_region32_contains_point(&output->region,
+ 						   x, y, NULL))
+ 			valid = 1;
+@@ -1757,6 +1761,9 @@ weston_pointer_handle_output_destroy(str
+ 	y = wl_fixed_to_int(pointer->y);
+ 
+ 	wl_list_for_each(output, &ec->output_list, link) {
++		if (output->unavailable)
++			continue;
++
+ 		if (pixman_region32_contains_point(&output->region,
+ 						   x, y, NULL))
+ 			return;
