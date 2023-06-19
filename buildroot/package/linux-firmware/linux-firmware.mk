@@ -503,7 +503,15 @@ LINUX_FIRMWARE_ALL_LICENSE_FILES += LICENCE.iwlwifi_firmware
 endif
 
 ifeq ($(BR2_PACKAGE_LINUX_FIRMWARE_IWLWIFI_AX210),y)
+ifeq ($(BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_5_15),y)
 LINUX_FIRMWARE_FILES += iwlwifi-ty-a0-gf-a0-59.ucode
+else ifeq ($(BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_5_10),y)
+LINUX_FIRMWARE_FILES += iwlwifi-ty-a0-gf-a0-59.ucode
+else
+LINUX_FIRMWARE_FILES += \
+	iwlwifi-ty-a0-gf-a0-72.ucode \
+	iwlwifi-ty-a0-gf-a0.pnvm
+endif
 LINUX_FIRMWARE_ALL_LICENSE_FILES += LICENCE.iwlwifi_firmware
 endif
 
