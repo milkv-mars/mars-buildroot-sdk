@@ -1,0 +1,19 @@
+Make gst play video more sync.
+
+Signed-off-by: Leo Lu <leo.lu@starfivetech.com>
+
+diff -purN a/omx/gstomxvideodec.c b/omx/gstomxvideodec.c
+--- a/omx/gstomxvideodec.c	2023-06-20 15:16:16.141885955 +0800
++++ b/omx/gstomxvideodec.c	2023-06-20 15:20:50.459552058 +0800
+@@ -1887,9 +1887,10 @@ gst_omx_video_dec_loop (GstOMXVideoDec *
+    * stream, corrupted input data...
+    * In any cases, not likely to be seen again. so drop it before they pile up
+    * and use all the memory. */
++#ifndef USE_OMX_TARGET_STARFIVE  
+   gst_omx_video_dec_clean_older_frames (self, buf,
+       gst_video_decoder_get_frames (GST_VIDEO_DECODER (self)));
+-
++#endif
+   if (!frame && (buf->omx_buf->nFilledLen > 0 || buf->eglimage)) {
+     GstBuffer *outbuf = NULL;
+ 
