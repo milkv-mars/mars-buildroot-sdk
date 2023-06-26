@@ -184,7 +184,7 @@ Int32 ComponentWait(Component component)
         com->thread = NULL;
         WaitReturningPortData(com);
     } else {
-        VLOG(ERR, "%s:%d wait Component %s timeout\n", __FUNCTION__, __LINE__, com->name);
+        VLOG(INFO, "%s:%d wait Component %s timeout\n", __FUNCTION__, __LINE__, com->name);
     }
 
     return ret;
