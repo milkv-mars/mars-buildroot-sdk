@@ -37,10 +37,11 @@
 #include <linux/sched/signal.h>
 #include <linux/reset.h>
 #include <linux/version.h>
-#include <soc/sifive/sifive_l2_cache.h>
 
 #include "../../../jpuapi/jpuconfig.h"
 #include "jpu.h"
+
+extern void sifive_ccache_flush_range(phys_addr_t start, size_t len);
 
 //#define ENABLE_DEBUG_MSG
 #ifdef ENABLE_DEBUG_MSG
@@ -65,11 +66,6 @@
 /* if this driver knows the dedicated video memory address */
 
 //#define JPU_SUPPORT_RESERVED_VIDEO_MEMORY        //if this driver knows the dedicated video memory address
-
-static void starfive_flush_dcache(unsigned long start, unsigned long len)
-{
-	sifive_l2_flush64_range(start, len);
-}
 
 #define JPU_PLATFORM_DEVICE_NAME    "cnm_jpu"
 #define JPU_CLK_NAME                "jpege"
@@ -204,6 +200,14 @@ static struct list_head s_inst_list_head = LIST_HEAD_INIT(s_inst_list_head);
 #define WriteJpuRegister(addr, val)     *(volatile unsigned int *)(s_jpu_register.virt_addr + addr) = (unsigned int)val
 #define WriteJpu(addr, val)             *(volatile unsigned int *)(addr) = (unsigned int)val;
 
+static void starfive_flush_dcache(phys_addr_t start, size_t len)
+{
+#ifdef ARCH_HAS_SYNC_DMA_FOR_CPU
+	dma_sync_single_for_cpu(jpu_dev, start, len, DMA_FROM_DEVICE);
+#else
+	sifive_ccache_flush_range(start, len);
+#endif
+}
 
 static int jpu_alloc_dma_buffer(jpudrv_buffer_t *jb)
 {
