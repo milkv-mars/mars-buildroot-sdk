@@ -115,6 +115,10 @@ uint32_t v4l2fmt_to_drmfmt(uint32_t v4l2_fmt)
     case V4L2_PIX_FMT_NV12:
         drm_fmt = DRM_FORMAT_NV12;
         break;
+    /*add for jh7110 debug*/
+    case V4L2_PIX_FMT_AYUV32:
+        drm_fmt = DRM_FORMAT_NV12;
+        break;
     default:
         drm_fmt = DRM_FORMAT_NV21;
         LOG(STF_LEVEL_WARN, "drm not support the V4L2_format\n");
@@ -318,5 +322,3 @@ void jpegWrite(uint8_t* img, char* jpegFilename,
     // close output file
     fclose(outfile);
 }
-
-

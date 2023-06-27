@@ -859,3 +859,63 @@ int convert_rgb888_to_rgb(const uint8_t *inBuf, uint8_t *outBuf, int imgWidth, i
     free(tmp);
     return 0;
 }
+
+enum AYUV
+{
+    AYUV_V = 0,
+    AYUV_U = 1,
+    AYUV_Y = 2,
+    AYUV_A = 3,
+};
+
+int convert_ayuv32_to_nv12(const uint8_t *inBuf, uint8_t *outBuf, int imgWidth, int imgHeight)
+{
+    int i, j;
+    unsigned int uv_start_index = imgWidth * imgHeight, frameWidthProd4 = imgWidth * 4;
+    unsigned int frameWidthDiv2 = imgWidth / 2, frameWidthDiv4 = imgWidth / 4;
+    unsigned int rowsFrameWidth, rowsFrameWidthProd4, rowsFrameWidthProd4ColsProd4, rowsAdd1FrameWidthProd4ColsProd4;
+    unsigned int uvStartIndexRowsFrameWidthDiv2, uvStartIndexRowsFrameWidthDiv2Cols;
+    int dstSize = imgWidth * imgHeight * 3 / 2;
+
+    /* 1. Execute the AYUVToNV12 algorithm. */
+    /* Y/U/V components extraction for even index i */
+    for (i = 0; i < imgHeight; i += 2)
+    {
+        rowsFrameWidth = i * imgWidth;
+        rowsFrameWidthProd4 = i * frameWidthProd4;
+        uvStartIndexRowsFrameWidthDiv2 = uv_start_index + i * frameWidthDiv2;
+        for (j = 0; j < frameWidthDiv4; j++)
+        {
+            /* Y components extraction for even index i */
+            outBuf[rowsFrameWidth + j] = inBuf[rowsFrameWidthProd4 + j * 4 + AYUV_Y];
+
+            rowsFrameWidthProd4ColsProd4 = rowsFrameWidthProd4 + j * 16;
+            rowsAdd1FrameWidthProd4ColsProd4 = rowsFrameWidthProd4ColsProd4 + frameWidthProd4;
+            uvStartIndexRowsFrameWidthDiv2Cols = uvStartIndexRowsFrameWidthDiv2 + j * 4;
+
+            /* UV components extraction for even index i: processing 4 elements every time */
+            outBuf[uvStartIndexRowsFrameWidthDiv2Cols] = inBuf[rowsFrameWidthProd4ColsProd4 + 1];
+            outBuf[uvStartIndexRowsFrameWidthDiv2Cols + 1] = inBuf[rowsAdd1FrameWidthProd4ColsProd4];
+            outBuf[uvStartIndexRowsFrameWidthDiv2Cols + 2] = inBuf[rowsFrameWidthProd4ColsProd4 + 9];
+            outBuf[uvStartIndexRowsFrameWidthDiv2Cols + 3] = inBuf[rowsAdd1FrameWidthProd4ColsProd4 + 8];
+
+        }
+        for (; j < imgWidth; j++)
+        {
+            outBuf[rowsFrameWidth + j] = inBuf[rowsFrameWidthProd4 + j * 4 + AYUV_Y];
+        }
+    }
+
+    /* Y components extraction for odd index i */
+    for (i = 1; i < imgHeight; i += 2)
+    {
+        rowsFrameWidth = i * imgWidth;
+        rowsFrameWidthProd4 = i * frameWidthProd4;
+        for (j = 0; j < imgWidth; j++)
+        {
+            outBuf[rowsFrameWidth + j] = inBuf[rowsFrameWidthProd4 + j * 4 + AYUV_Y];
+        }
+    }
+
+    return 0;
+}

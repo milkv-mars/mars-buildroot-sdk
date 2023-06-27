@@ -380,6 +380,18 @@ static void imageProcess(const uint8_t* inbuf, uint8_t* outbuf,
             write_file(filename, (const uint8_t *)dst, in_width * in_height * 2);
             s_frmcnt++;
             break;
+        case V4L2_PIX_FMT_AYUV32:
+            if (gp_cfg_param->jpegFilename && gp_cfg_param->rec_fp) {
+                fwrite(inbuf, in_imagesize, 1, gp_cfg_param->rec_fp);
+            }
+
+            if (outbuf) {
+                if ((STF_DISP_DRM == disp_type) && (out_format == V4L2_PIX_FMT_NV12)) {
+                    convert_ayuv32_to_nv12(inbuf, outbuf, in_width, in_height);
+                }
+            }
+
+            break;
         default:
             LOG(STF_LEVEL_ERR, "unknow in_format\n");
             break;
@@ -776,6 +788,7 @@ static void usage(FILE* fp, int argc, char** argv)
         "                8: V4L2_PIX_FMT_SGRBG12\n"
         "                9: V4L2_PIX_FMT_SGBRG12\n"
         "                10: V4L2_PIX_FMT_SBGGR12\n"
+        "                11: V4L2_PIX_FMT_AYUV32\n"
         "                default: V4L2_PIX_FMT_NV12\n"
         "-t | --distype       set display type, default 0\n"
         "                0: Not display\n"
@@ -947,6 +960,9 @@ void parse_options(int argc, char **argv, ConfigParam_t *cfg_param)
                 break;
             case  10:
                 value = V4L2_PIX_FMT_SBGGR12;
+                break;
+            case  11:
+                value = V4L2_PIX_FMT_AYUV32;
                 break;
             default:
                 value = V4L2_PIX_FMT_RGB565;
