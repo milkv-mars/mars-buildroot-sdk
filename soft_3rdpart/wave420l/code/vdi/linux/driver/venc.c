@@ -34,11 +34,12 @@
 #include <linux/version.h>
 #include <linux/of.h>
 #include <linux/pm_runtime.h>
-#include <soc/sifive/sifive_l2_cache.h>
 
 #include "../../../vpuapi/vpuconfig.h"
 
 #include "vpu.h"
+
+extern void sifive_ccache_flush_range(phys_addr_t start, size_t len);
 
 #ifndef  CONFIG_PM
 #define CONFIG_PM
@@ -67,11 +68,6 @@
 
 /* if this driver knows the dedicated video memory address */
 //#define VPU_SUPPORT_RESERVED_VIDEO_MEMORY
-
-static void starfive_flush_dcache(unsigned long start, unsigned long len)
-{
-	sifive_l2_flush64_range(start, len);
-}
 
 #define VPU_PLATFORM_DEVICE_NAME "venc"
 #define VPU_CLK_NAME "vcoenc"
@@ -355,6 +351,14 @@ static u32	s_vpu_reg_store[MAX_NUM_VPU_CORE][64];
 #define	WriteVpuRegister(addr, val)	*(volatile unsigned int *)(s_vpu_register.virt_addr + s_bit_firmware_info[core].reg_base_offset + addr) = (unsigned int)val
 #define	WriteVpu(addr, val)			*(volatile unsigned int *)(addr) = (unsigned int)val;
 
+static void starfive_flush_dcache(phys_addr_t start, size_t len)
+{
+#ifdef ARCH_HAS_SYNC_DMA_FOR_CPU
+	dma_sync_single_for_cpu(vpu_dev, start, len, DMA_FROM_DEVICE);
+#else
+	sifive_ccache_flush_range(start, len);
+#endif
+}
 
 static int vpu_alloc_dma_buffer(vpudrv_buffer_t *vb)
 {
