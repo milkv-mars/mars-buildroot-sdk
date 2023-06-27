@@ -50,10 +50,11 @@
 #include <linux/kthread.h>
 #include <linux/reset.h>
 #include <asm/io.h>
-#include <soc/sifive/sifive_l2_cache.h>
 #include "../../../vpuapi/vpuconfig.h"
 
 #include "vpu.h"
+
+extern void sifive_ccache_flush_range(phys_addr_t start, size_t len);
 
 //#define ENABLE_DEBUG_MSG
 #ifdef ENABLE_DEBUG_MSG
@@ -86,11 +87,6 @@
 
 /* if this driver knows the dedicated video memory address */
 //#define VPU_SUPPORT_RESERVED_VIDEO_MEMORY
-
-static void starfive_flush_dcache(unsigned long start, unsigned long len)
-{
-	sifive_l2_flush64_range(start, len);
-}
 
 #define VPU_PLATFORM_DEVICE_NAME "vdec"
 #define VPU_CLK_NAME "vcodec"
@@ -475,6 +471,15 @@ static int vpu_freq_init(struct device *dev)
 }
 
 #endif
+
+static void starfive_flush_dcache(phys_addr_t start, size_t len)
+{
+#ifdef ARCH_HAS_SYNC_DMA_FOR_CPU
+	dma_sync_single_for_cpu(vpu_dev, start, len, DMA_FROM_DEVICE);
+#else
+	sifive_ccache_flush_range(start, len);
+#endif
+}
 
 static int vpu_alloc_dma_buffer(vpudrv_buffer_t *vb)
 {
