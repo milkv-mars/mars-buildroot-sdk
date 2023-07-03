@@ -1,0 +1,31 @@
+Modify backward rate 0.01 ----> 0.04  and forward rate 0.08 ----> 0.04
+
+Signed-off-by: Leo Lu <leo.lu@starfivetech.com>
+
+--- a/tools/gst-play.c	2023-07-03 16:13:50.119468111 +0800
++++ b/tools/gst-play.c	2023-07-03 16:12:19.939018720 +0800
+@@ -519,10 +519,10 @@ play_bus_msg (GstBus * bus, GstMessage *
+                       NULL, NULL)) {
+                 if (button == 4) {
+                   /* wheel up */
+-                  relative_seek (play, +0.08);
++                  relative_seek (play, +0.04);
+                 } else if (button == 5) {
+                   /* wheel down */
+-                  relative_seek (play, -0.01);
++                  relative_seek (play, -0.04);
+                 }
+               }
+               break;
+@@ -1466,9 +1466,9 @@ keyboard_cb (const gchar * key_input, gp
+       break;
+     default:
+       if (strcmp (key_input, GST_PLAY_KB_ARROW_RIGHT) == 0) {
+-        relative_seek (play, +0.08);
++        relative_seek (play, +0.04);
+       } else if (strcmp (key_input, GST_PLAY_KB_ARROW_LEFT) == 0) {
+-        relative_seek (play, -0.01);
++        relative_seek (play, -0.04);
+       } else if (strcmp (key_input, GST_PLAY_KB_ARROW_UP) == 0) {
+         play_set_relative_volume (play, +1.0 / VOLUME_STEPS);
+       } else if (strcmp (key_input, GST_PLAY_KB_ARROW_DOWN) == 0) {
