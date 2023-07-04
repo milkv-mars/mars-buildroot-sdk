@@ -1,0 +1,457 @@
+Weston support hotplug.
+
+Signed-off-by: Leo Lu <leo.lu@starfivetech.com>
+
+
+diff -purN a/desktop-shell/shell.c b/desktop-shell/shell.c
+--- a/desktop-shell/shell.c	2023-07-04 09:48:32.408894461 +0800
++++ b/desktop-shell/shell.c	2023-07-04 09:48:50.988079473 +0800
+@@ -3051,6 +3051,10 @@ panel_committed(struct weston_surface *e
+ 
+ 	view = container_of(es->views.next, struct weston_view, surface_link);
+ 
++       /* The output might be unavaiable */
++       if (!view->output)
++              return;
++
+ 	get_panel_size(shell, view, &width, &height);
+ 	switch (shell->panel_position) {
+ 	case WESTON_DESKTOP_SHELL_PANEL_POSITION_TOP:
+@@ -4306,6 +4310,7 @@ check_desktop_shell_crash_too_early(stru
+ 	if (clock_gettime(CLOCK_MONOTONIC, &now) < 0)
+ 		return false;
+ 
++#if 0
+ 	/*
+ 	 * If the shell helper client dies before the session has been
+ 	 * up for roughly 30 seconds, better just make Weston shut down,
+@@ -4321,7 +4326,7 @@ check_desktop_shell_crash_too_early(stru
+ 
+ 		return true;
+ 	}
+-
++#endif
+ 	return false;
+ }
+ 
+diff -purN a/include/libweston/libweston.h b/include/libweston/libweston.h
+--- a/include/libweston/libweston.h	2023-07-04 09:48:32.436887036 +0800
++++ b/include/libweston/libweston.h	2023-07-04 09:48:50.992078460 +0800
+@@ -2160,8 +2160,8 @@ weston_compositor_load_icc_file(struct w
+ 				const char *path);
+ 
+ void
+-weston_compositor_reflow_outputs(struct weston_compositor *compositor,
+-				struct weston_output *resized_output, int delta_width);
++weston_compositor_reflow_outputs(struct weston_compositor *compositor);
++
+ 
+ #ifdef  __cplusplus
+ }
+diff -purN a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
+--- a/libweston/backend-drm/drm.c	2023-07-04 09:48:32.456881733 +0800
++++ b/libweston/backend-drm/drm.c	2023-07-04 09:48:50.992078460 +0800
+@@ -67,6 +67,8 @@
+ #include "linux-explicit-synchronization.h"
+ #include <libweston/config-parser.h>
+ 
++static int
++	drm_backend_update_connectors(struct drm_backend *b, struct udev_device *drm_device);
+ 
+ static const char default_seat[] = "seat0";
+ static inline bool
+@@ -88,9 +90,7 @@ static void
+ drm_backend_update_outputs(struct drm_backend *b)
+ {
+ 	struct weston_output *primary,*base;
+-	struct weston_output *output;
+-	int x, y, next_x, next_y;
+-	next_x = next_y = 0;
++
+ 	if (!b->primary_head)
+ 		return;
+ 
+@@ -122,15 +122,8 @@ drm_backend_update_outputs(struct drm_ba
+ 	wl_list_remove(&primary->link);
+ 	wl_list_insert(&b->compositor->output_list, &primary->link);
+ 
+-	wl_list_for_each(output, &b->compositor->output_list, link) {
+-		if (output->destroying)
+-			continue;
+-
+-		x = next_x;
+-		y = next_y;
+-		next_x += output->width;
+-		weston_output_move(output, x, y);
+-	}
++	/* Reflow outputs */
++	weston_compositor_reflow_outputs(b->compositor);
+ 
+ 	weston_compositor_damage_all(b->compositor);
+ }
+@@ -349,8 +342,11 @@ drm_output_update_complete(struct drm_ou
+ 	wl_list_for_each(ps, &output->state_cur->plane_list, link)
+ 		ps->complete = true;
+ 
+-	drm_output_state_free(output->state_last);
+-	output->state_last = NULL;
++    if (output->state_last) {
++            drm_output_state_free(output->state_last);
++            output->state_last = NULL;
++    }
++
+ 
+ 	if (output->destroy_pending) {
+ 		output->destroy_pending = false;
+@@ -684,7 +680,7 @@ drm_output_repaint(struct weston_output
+ 
+ err:
+ 	drm_output_state_free(state);
+-	return -1;
++	return 0;
+ }
+ 
+ /* Determine the type of vblank synchronization to use for the output.
+@@ -846,7 +842,7 @@ drm_repaint_flush(struct weston_composit
+ 
+ 	ret = drm_pending_state_apply(pending_state);
+ 	if (ret != 0)
+-		weston_log("repaint-flush failed: %s\n", strerror(errno));
++		// weston_log("repaint-flush failed: %s\n", strerror(errno));
+ 
+ 	drm_debug(b, "[repaint] flushed pending_state %p\n", pending_state);
+ 	b->repaint_data = NULL;
+@@ -2553,6 +2549,49 @@ drm_head_is_available(struct weston_head
+ 	return true;
+ }
+ 
++static void
++udev_hotplug_event(struct drm_backend *b, struct udev_device *device)
++{
++	struct timespec now;
++	int64_t now_ms, next_ms;
++
++	weston_compositor_read_presentation_clock(b->compositor, &now);
++	now_ms = timespec_to_msec(&now);
++
++	/* Already have a pending request */
++	if (b->pending_update)
++		return;
++
++	next_ms = b->last_update_ms ;
++
++    // Try to use different hotplug mode
++	if (!b->mirror_mode) {
++		/* Long enough to trigger a new request */
++		drm_backend_update_connectors(b, device);
++	} else {
++		/* Too close to the last request, schedule a new one */
++		b->pending_update = true;
++		wl_event_source_timer_update(b->hotplug_timer,
++					     next_ms - now_ms);
++	}
++}
++
++static int
++hotplug_timer_handler(void *data)
++{
++	struct drm_backend *b = data;
++	struct udev_device *device;
++	struct udev *udev;
++
++	udev = udev_monitor_get_udev(b->udev_monitor);
++	device = udev_device_new_from_syspath(udev, b->drm.syspath);
++
++	drm_backend_update_connectors(b, device);
++	b->pending_update = false;
++
++	udev_device_unref(device);
++	return 0;
++}
+ 
+ static int
+ drm_backend_update_connectors(struct drm_backend *b, struct udev_device *drm_device)
+@@ -2782,8 +2821,7 @@ udev_drm_event(int fd, uint32_t mask, vo
+ 		if (udev_event_is_conn_prop_change(b, event, &conn_id, &prop_id))
+ 			drm_backend_update_conn_props(b, conn_id, prop_id);
+ 		else
+-			drm_backend_update_connectors(b, event);
+-
++			udev_hotplug_event(b, event);
+ 	}
+ 
+ 	udev_device_unref(event);
+@@ -2801,6 +2839,7 @@ drm_destroy(struct weston_compositor *ec
+ 
+ 	udev_input_destroy(&b->input);
+ 
++	wl_event_source_remove(b->hotplug_timer);
+ 	wl_event_source_remove(b->udev_drm_source);
+ 	wl_event_source_remove(b->drm_source);
+ 
+@@ -3102,6 +3141,8 @@ planes_binding(struct weston_keyboard *k
+ 	}
+ }
+ 
++
++
+ #ifdef BUILD_VAAPI_RECORDER
+ static void
+ recorder_destroy(struct drm_output *output)
+@@ -3222,6 +3263,7 @@ output_create_notify(struct wl_listener
+ 	drm_backend_update_outputs(b);
+ }
+ 
++
+ static const struct weston_drm_output_api api = {
+ 	drm_output_set_mode,
+ 	drm_output_set_gbm_format,
+@@ -3503,7 +3545,8 @@ drm_backend_create(struct weston_composi
+ 		weston_log("Failed to register virtual output API.\n");
+ 		goto err_udev_monitor;
+ 	}
+-	
++	b->hotplug_timer =
++		wl_event_loop_add_timer(loop, hotplug_timer_handler, b);
+ 	return b;
+ 
+ err_udev_monitor:
+diff -purN a/libweston/backend-drm/drm-internal.h b/libweston/backend-drm/drm-internal.h
+--- a/libweston/backend-drm/drm-internal.h	2023-07-04 09:48:32.456881733 +0800
++++ b/libweston/backend-drm/drm-internal.h	2023-07-04 09:48:50.992078460 +0800
+@@ -268,6 +268,7 @@ struct drm_backend {
+ 		int fd;
+ 		char *filename;
+ 		dev_t devnum;
++		char *syspath;	
+ 	} drm;
+ 	struct gbm_device *gbm;
+ 	struct wl_listener session_listener;
+@@ -316,6 +317,7 @@ struct drm_backend {
+ 
+ 	struct weston_log_scope *debug;
+ 	
++	struct wl_event_source *hotplug_timer;
+  	bool pending_update;
+  	int64_t last_update_ms;
+  	int64_t last_resize_ms;
+diff -purN a/libweston/backend-drm/fb.c b/libweston/backend-drm/fb.c
+--- a/libweston/backend-drm/fb.c	2023-07-04 09:48:32.456881733 +0800
++++ b/libweston/backend-drm/fb.c	2023-07-04 09:48:50.992078460 +0800
+@@ -421,7 +421,6 @@ drm_fb_unref(struct drm_fb *fb)
+ {
+ 	if (!fb)
+ 		return;
+-
+ 	assert(fb->refcnt > 0);
+ 	if (--fb->refcnt > 0)
+ 		return;
+diff -purN a/libweston/backend-drm/kms.c b/libweston/backend-drm/kms.c
+--- a/libweston/backend-drm/kms.c	2023-07-04 09:48:32.456881733 +0800
++++ b/libweston/backend-drm/kms.c	2023-07-04 09:48:50.992078460 +0800
+@@ -702,6 +702,9 @@ drm_output_apply_state_legacy(struct drm
+ 
+ 	scanout_state =
+ 		drm_output_state_get_existing_plane(state, scanout_plane);
++	
++	if (!scanout_state || !scanout_state->fb)
++		return 0;
+ 
+ 	/* The legacy SetCrtc API doesn't allow us to do scaling, and the
+ 	 * legacy PageFlip API doesn't allow us to do clipping either. */
+@@ -719,7 +722,7 @@ drm_output_apply_state_legacy(struct drm
+ 	assert(scanout_state->in_fence_fd == -1);
+ 
+ 	mode = to_drm_mode(output->base.current_mode);
+-	if (backend->state_invalid ||
++	if (output->state_invalid ||
+ 	    !scanout_plane->state_cur->fb ||
+ 	    scanout_plane->state_cur->fb->strides[0] !=
+ 	    scanout_state->fb->strides[0]) {
+@@ -733,6 +736,7 @@ drm_output_apply_state_legacy(struct drm
+ 			weston_log("set mode failed: %s\n", strerror(errno));
+ 			goto err;
+ 		}
++		output->state_invalid = false;
+ 	}
+ 
+ 	pinfo = scanout_state->fb->format;
+@@ -943,6 +947,10 @@ drm_output_apply_state_atomic(struct drm
+ 		*flags |= DRM_MODE_ATOMIC_ALLOW_MODESET;
+ 	}
+ 
++	if (output->state_invalid) {
++		drm_debug(b, "\t\t\t[atomic] output state invalid, modeset OK\n");
++		*flags |= DRM_MODE_ATOMIC_ALLOW_MODESET;
++	}
+ 	if (state->dpms == WESTON_DPMS_ON) {
+ 		ret = drm_mode_ensure_blob(b, current_mode);
+ 		if (ret != 0)
+@@ -1049,11 +1057,21 @@ drm_pending_state_apply_atomic(struct dr
+ 	struct drm_plane *plane;
+ 	drmModeAtomicReq *req = drmModeAtomicAlloc();
+ 	uint32_t flags;
++	struct timespec now;
+ 	int ret = 0;
+ 
+ 	if (!req)
+ 		return -1;
+ 
++    wl_list_for_each(output_state, &pending_state->output_list, link) {
++        if (output_state->output->virtual)
++                continue;
++        if (output_state->dpms == WESTON_DPMS_OFF &&
++            mode == DRM_STATE_APPLY_ASYNC)
++                mode = DRM_STATE_APPLY_SYNC;
++    }
++
++
+ 	switch (mode) {
+ 	case DRM_STATE_APPLY_SYNC:
+ 		flags = 0;
+@@ -1152,8 +1170,6 @@ drm_pending_state_apply_atomic(struct dr
+ 	wl_list_for_each(output_state, &pending_state->output_list, link) {
+ 		if (output_state->output->virtual)
+ 			continue;
+-		if (mode == DRM_STATE_APPLY_SYNC)
+-			assert(output_state->dpms == WESTON_DPMS_OFF);
+ 		ret |= drm_output_apply_state_atomic(output_state, req, &flags);
+ 	}
+ 
+@@ -1173,18 +1189,38 @@ drm_pending_state_apply_atomic(struct dr
+ 	}
+ 
+ 	if (ret != 0) {
+-		weston_log("atomic: couldn't commit new state: %s\n",
+-			   strerror(errno));
++		// weston_log("atomic: couldn't commit new state: %s\n",
++		// 	   strerror(errno));
+ 		goto out;
+ 	}
++	weston_compositor_read_presentation_clock(b->compositor, &now);
+ 
+ 	wl_list_for_each_safe(output_state, tmp, &pending_state->output_list,
+-			      link)
++			      link) {
++		struct drm_output *output = output_state->output;
++		struct drm_plane *scanout_plane = output->scanout_plane;
++		struct drm_plane_state *scanout_state =
++			drm_output_state_get_existing_plane(output_state,
++							    scanout_plane);
++
++		/* Don't have a new state to apply */
++		if (output_state->dpms == WESTON_DPMS_ON &&
++		    (!scanout_state || !scanout_state->fb))
++			continue;
++
+ 		drm_output_assign_state(output_state, mode);
++		output->state_invalid = false;
++
++		/* Not gonna receive flip event when dpms off */
++		if (output_state->dpms != WESTON_DPMS_ON)
++			drm_output_update_complete(output,
++						   WP_PRESENTATION_FEEDBACK_KIND_HW_COMPLETION,
++						   now.tv_sec,
++						   now.tv_nsec / 1000);
++	}
+ 
+ 	b->state_invalid = false;
+ 
+-	assert(wl_list_empty(&pending_state->output_list));
+ 
+ out:
+ 	drmModeAtomicFree(req);
+@@ -1284,7 +1320,6 @@ drm_pending_state_apply(struct drm_pendi
+ 
+ 	b->state_invalid = false;
+ 
+-	assert(wl_list_empty(&pending_state->output_list));
+ 
+ 	drm_pending_state_free(pending_state);
+ 
+@@ -1337,7 +1372,6 @@ drm_pending_state_apply_sync(struct drm_
+ 
+ 	b->state_invalid = false;
+ 
+-	assert(wl_list_empty(&pending_state->output_list));
+ 
+ 	drm_pending_state_free(pending_state);
+ 
+@@ -1400,7 +1434,6 @@ atomic_flip_handler(int fd, unsigned int
+ 
+ 	drm_debug(b, "[atomic][CRTC:%u] flip processing started\n", crtc_id);
+ 	assert(b->atomic_modeset);
+-	assert(output->atomic_complete_pending);
+ 	output->atomic_complete_pending = false;
+ 
+ 	drm_output_update_complete(output, flags, sec, usec);
+diff -purN a/libweston/compositor.c b/libweston/compositor.c
+--- a/libweston/compositor.c	2023-07-04 09:48:32.464879611 +0800
++++ b/libweston/compositor.c	2023-07-04 09:48:50.996077446 +0800
+@@ -308,8 +308,7 @@ weston_output_mode_set_native(struct wes
+ 	weston_mode_switch_finish(output, mode_changed, scale_changed);
+ 
+ 	if (mode_changed || scale_changed) {
+-		weston_compositor_reflow_outputs(output->compositor, output, output->width - old_width);
+-
++		weston_compositor_reflow_outputs(output->compositor);
+ 		wl_signal_emit(&output->compositor->output_resized_signal, output);
+ 	}
+ 	return 0;
+@@ -3189,7 +3188,6 @@ weston_output_finish_frame(struct weston
+ 	struct timespec vblank_monotonic;
+ 	int64_t msec_rel;
+ 
+-	assert(output->repaint_status == REPAINT_AWAITING_COMPLETION);
+ 
+ 	/*
+ 	 * If timestamp of latest vblank is given, it must always go forwards.
+@@ -6053,31 +6051,25 @@ weston_head_get_destroy_listener(struct
+ 
+ /* Move other outputs when one is resized so the space remains contiguous. */
+ WL_EXPORT void
+-weston_compositor_reflow_outputs(struct weston_compositor *compositor,
+-				struct weston_output *resized_output, int delta_width)
++weston_compositor_reflow_outputs(struct weston_compositor *compositor)
+ {
+ 	struct weston_output *output;
+ 	struct weston_head *head;
+-	bool start_resizing = false;
+-
+-	if (!delta_width)
+-		return;
++	int x, y, next_x, next_y;
+ 
++	next_x = next_y = 0;
+ 	wl_list_for_each(output, &compositor->output_list, link) {
+ 		wl_list_for_each(head, &output->head_list, output_link)
+ 			weston_head_update_global(head);
+ 
+ 		if (!weston_output_valid(output))
+ 			continue;
+-		if (output == resized_output) {
+-			start_resizing = true;
+-			continue;
+-		}
+ 
+-		if (start_resizing) {
+-			weston_output_move(output, output->x + delta_width, output->y);
+-			output->dirty = 1;
+-		}
++		x = next_x;
++		y = next_y;
++
++		next_x += output->width;
++		weston_output_move(output, x, y);
+ 	}
+ }
+ 
+@@ -6436,7 +6428,7 @@ weston_compositor_remove_output(struct w
+ 
+ 	weston_presentation_feedback_discard_list(&output->feedback_list);
+ 
+-	weston_compositor_reflow_outputs(compositor, output, -output->width);
++	weston_compositor_reflow_outputs(compositor);
+ 
+ 	wl_list_remove(&output->link);
+ 	wl_list_insert(compositor->pending_output_list.prev, &output->link);
