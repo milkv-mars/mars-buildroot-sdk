@@ -1,0 +1,6 @@
+comment "wave511 package"
+
+config BR2_PACKAGE_WAVE511
+	bool "wave511"
+	help
+	  wave511 package

@@ -1,0 +1,345 @@
+Set thread priorities without using RTKit.
+Enable alsa node.
+
+Signed-off-by: Windsome Zeng <windsome.zeng@starfivetech.com>
+
+diff -purN a/src/daemon/client-rt.conf.in b/src/daemon/client-rt.conf.in
+--- a/src/daemon/client-rt.conf.in	2022-10-13 16:54:09.376674871 +0800
++++ b/src/daemon/client-rt.conf.in	2022-10-13 16:51:39.515754495 +0800
+@@ -33,12 +33,23 @@ context.modules = [
+     # If nofail is given, module initialization failures are ignored.
+     #
+     # Uses RTKit to boost the data thread priority.
+-    { name = libpipewire-module-rtkit
++    #{ name = libpipewire-module-rtkit
++    #    args = {
++    #        #nice.level   = -11
++    #        #rt.prio      = 88
++    #        #rt.time.soft = 2000000
++    #        #rt.time.hard = 2000000
++    #    }
++    #    flags = [ ifexists nofail ]
++    #}
++
++    # Set thread priorities without using RTKit.
++    { name = libpipewire-module-rt
+         args = {
+-            #nice.level   = -11
+-            #rt.prio      = 88
+-            #rt.time.soft = 2000000
+-            #rt.time.hard = 2000000
++            nice.level   = -11
++            rt.prio      = 88
++            rt.time.soft = 2000000
++            rt.time.hard = 2000000
+         }
+         flags = [ ifexists nofail ]
+     }
+diff -purN a/src/daemon/filter-chain/demonic.conf b/src/daemon/filter-chain/demonic.conf
+--- a/src/daemon/filter-chain/demonic.conf	2022-10-13 16:54:09.376674871 +0800
++++ b/src/daemon/filter-chain/demonic.conf	2022-10-13 16:51:39.515754495 +0800
+@@ -19,13 +19,13 @@ context.spa-libs = {
+ }
+ 
+ context.modules = [
+-    # Uses RTKit to boost the data thread priority.
+-    { name = libpipewire-module-rtkit
++    # Set thread priorities without using RTKit.
++    { name = libpipewire-module-rt
+         args = {
+-            #nice.level   = -11
+-            #rt.prio      = 88
+-            #rt.time.soft = 2000000
+-            #rt.time.hard = 2000000
++            nice.level   = -11
++            rt.prio      = 88
++            rt.time.soft = 2000000
++            rt.time.hard = 2000000
+         }
+         flags = [ ifexists nofail ]
+     }
+diff -purN a/src/daemon/filter-chain/sink-dolby-surround.conf b/src/daemon/filter-chain/sink-dolby-surround.conf
+--- a/src/daemon/filter-chain/sink-dolby-surround.conf	2022-10-13 16:54:09.376674871 +0800
++++ b/src/daemon/filter-chain/sink-dolby-surround.conf	2022-10-13 16:51:39.515754495 +0800
+@@ -12,12 +12,13 @@ context.spa-libs = {
+ }
+ 
+ context.modules = [
+-    { name = libpipewire-module-rtkit
++    # Set thread priorities without using RTKit.
++    { name = libpipewire-module-rt
+         args = {
+-            #nice.level   = -11
+-            #rt.prio      = 88
+-            #rt.time.soft = 2000000
+-            #rt.time.hard = 2000000
++            nice.level   = -11
++            rt.prio      = 88
++            rt.time.soft = 2000000
++            rt.time.hard = 2000000
+         }
+         flags = [ ifexists nofail ]
+     }
+diff -purN a/src/daemon/filter-chain/sink-eq6.conf b/src/daemon/filter-chain/sink-eq6.conf
+--- a/src/daemon/filter-chain/sink-eq6.conf	2022-10-13 16:54:09.376674871 +0800
++++ b/src/daemon/filter-chain/sink-eq6.conf	2022-10-13 16:51:39.515754495 +0800
+@@ -12,12 +12,13 @@ context.spa-libs = {
+ }
+ 
+ context.modules = [
+-    { name = libpipewire-module-rtkit
++    # Set thread priorities without using RTKit.
++    { name = libpipewire-module-rt
+         args = {
+-            #nice.level   = -11
+-            #rt.prio      = 88
+-            #rt.time.soft = 2000000
+-            #rt.time.hard = 2000000
++            nice.level   = -11
++            rt.prio      = 88
++            rt.time.soft = 2000000
++            rt.time.hard = 2000000
+         }
+         flags = [ ifexists nofail ]
+     }
+diff -purN a/src/daemon/filter-chain/sink-matrix-spatialiser.conf b/src/daemon/filter-chain/sink-matrix-spatialiser.conf
+--- a/src/daemon/filter-chain/sink-matrix-spatialiser.conf	2022-10-13 16:54:09.376674871 +0800
++++ b/src/daemon/filter-chain/sink-matrix-spatialiser.conf	2022-10-13 16:51:39.515754495 +0800
+@@ -13,12 +13,13 @@ context.spa-libs = {
+ }
+ 
+ context.modules = [
+-    { name = libpipewire-module-rtkit
++    # Set thread priorities without using RTKit.
++    { name = libpipewire-module-rt
+         args = {
+-            #nice.level   = -11
+-            #rt.prio      = 88
+-            #rt.time.soft = 2000000
+-            #rt.time.hard = 2000000
++            nice.level   = -11
++            rt.prio      = 88
++            rt.time.soft = 2000000
++            rt.time.hard = 2000000
+         }
+         flags = [ ifexists nofail ]
+     }
+diff -purN a/src/daemon/filter-chain/sink-virtual-surround-5.1-kemar.conf b/src/daemon/filter-chain/sink-virtual-surround-5.1-kemar.conf
+--- a/src/daemon/filter-chain/sink-virtual-surround-5.1-kemar.conf	2022-10-13 16:54:09.376674871 +0800
++++ b/src/daemon/filter-chain/sink-virtual-surround-5.1-kemar.conf	2022-10-13 16:51:39.515754495 +0800
+@@ -12,12 +12,13 @@ context.spa-libs = {
+ }
+ 
+ context.modules = [
+-    { name = libpipewire-module-rtkit
++    # Set thread priorities without using RTKit.
++    { name = libpipewire-module-rt
+         args = {
+-            #nice.level   = -11
+-            #rt.prio      = 88
+-            #rt.time.soft = 2000000
+-            #rt.time.hard = 2000000
++            nice.level   = -11
++            rt.prio      = 88
++            rt.time.soft = 2000000
++            rt.time.hard = 2000000
+         }
+         flags = [ ifexists nofail ]
+     }
+diff -purN a/src/daemon/filter-chain/sink-virtual-surround-7.1-hesuvi.conf b/src/daemon/filter-chain/sink-virtual-surround-7.1-hesuvi.conf
+--- a/src/daemon/filter-chain/sink-virtual-surround-7.1-hesuvi.conf	2022-10-13 16:54:09.376674871 +0800
++++ b/src/daemon/filter-chain/sink-virtual-surround-7.1-hesuvi.conf	2022-10-13 16:51:39.515754495 +0800
+@@ -12,12 +12,13 @@ context.spa-libs = {
+ }
+ 
+ context.modules = [
+-    { name = libpipewire-module-rtkit
++    # Set thread priorities without using RTKit.
++    { name = libpipewire-module-rt
+         args = {
+-            #nice.level   = -11
+-            #rt.prio      = 88
+-            #rt.time.soft = 2000000
+-            #rt.time.hard = 2000000
++            nice.level   = -11
++            rt.prio      = 88
++            rt.time.soft = 2000000
++            rt.time.hard = 2000000
+         }
+         flags = [ ifexists nofail ]
+     }
+diff -purN a/src/daemon/filter-chain/source-rnnoise.conf b/src/daemon/filter-chain/source-rnnoise.conf
+--- a/src/daemon/filter-chain/source-rnnoise.conf	2022-10-13 16:54:09.376674871 +0800
++++ b/src/daemon/filter-chain/source-rnnoise.conf	2022-10-13 16:51:39.515754495 +0800
+@@ -12,12 +12,13 @@ context.spa-libs = {
+ }
+ 
+ context.modules = [
+-    { name = libpipewire-module-rtkit
++    # Set thread priorities without using RTKit.
++    { name = libpipewire-module-rt
+         args = {
+-            #nice.level   = -11
+-            #rt.prio      = 88
+-            #rt.time.soft = 2000000
+-            #rt.time.hard = 2000000
++            nice.level   = -11
++            rt.prio      = 88
++            rt.time.soft = 2000000
++            rt.time.hard = 2000000
+         }
+         flags = [ ifexists nofail ]
+     }
+diff -purN a/src/daemon/meson.build b/src/daemon/meson.build
+--- a/src/daemon/meson.build	2022-10-13 16:54:09.376674871 +0800
++++ b/src/daemon/meson.build	2022-10-13 16:51:39.515754495 +0800
+@@ -13,7 +13,7 @@ conf_config.set('session_manager_path',
+ conf_config.set('session_manager_args', '')
+ conf_config.set('pipewire_path', pipewire_bindir / 'pipewire')
+ conf_config.set('pipewire_pulse_path', pipewire_bindir / 'pipewire-pulse')
+-conf_config.set('sm_comment', '#')
++conf_config.set('sm_comment', '')
+ conf_config.set('pulse_comment', '#')
+ 
+ conf_config_uninstalled = conf_config
+diff -purN a/src/daemon/pipewire.conf.in b/src/daemon/pipewire.conf.in
+--- a/src/daemon/pipewire.conf.in	2022-10-13 16:54:09.376674871 +0800
++++ b/src/daemon/pipewire.conf.in	2022-10-13 16:51:39.515754495 +0800
+@@ -68,27 +68,27 @@ context.modules = [
+     #
+ 
+     # Uses RTKit to boost the data thread priority.
+-    { name = libpipewire-module-rtkit
+-        args = {
+-            #nice.level   = -11
+-            #rt.prio      = 88
+-            #rt.time.soft = 2000000
+-            #rt.time.hard = 2000000
+-        }
+-        flags = [ ifexists nofail ]
+-    }
+-
+-    # Set thread priorities without using RTKit.
+-    #{ name = libpipewire-module-rt
++    #{ name = libpipewire-module-rtkit
+     #    args = {
+-    #        nice.level   = -11
+-    #        rt.prio      = 88
+-    #        rt.time.soft = 2000000
+-    #        rt.time.hard = 2000000
++    #        #nice.level   = -11
++    #        #rt.prio      = 88
++    #        #rt.time.soft = 2000000
++    #        #rt.time.hard = 2000000
+     #    }
+     #    flags = [ ifexists nofail ]
+     #}
+ 
++    # Set thread priorities without using RTKit.
++    { name = libpipewire-module-rt
++        args = {
++            nice.level   = -11
++            rt.prio      = 88
++            rt.time.soft = 2000000
++            rt.time.hard = 2000000
++        }
++        flags = [ ifexists nofail ]
++    }
++
+     # The native communication protocol.
+     { name = libpipewire-module-protocol-native }
+ 
+@@ -131,9 +131,9 @@ context.modules = [
+         args = {
+             # access.allowed to list an array of paths of allowed
+             # apps.
+-            #access.allowed = [
+-            #    @session_manager_path@
+-            #]
++            access.allowed = [
++                @session_manager_path@
++            ]
+ 
+             # An array of rejected paths.
+             #access.rejected = [ ]
+@@ -208,23 +208,41 @@ context.objects = [
+     # This creates a single PCM source device for the given
+     # alsa device path hw:0. You can change source to sink
+     # to make a sink in the same way.
+-    #{ factory = adapter
+-    #    args = {
+-    #        factory.name           = api.alsa.pcm.source
+-    #        node.name              = "alsa-source"
+-    #        node.description       = "PCM Source"
+-    #        media.class            = "Audio/Source"
+-    #        api.alsa.path          = "hw:0"
+-    #        api.alsa.period-size   = 1024
+-    #        api.alsa.headroom      = 0
+-    #        api.alsa.disable-mmap  = false
+-    #        api.alsa.disable-batch = false
+-    #        audio.format           = "S16LE"
+-    #        audio.rate             = 48000
+-    #        audio.channels         = 2
+-    #        audio.position         = "FL,FR"
+-    #    }
+-    #}
++    { factory = adapter
++        args = {
++            factory.name           = api.alsa.pcm.source
++            node.name              = "alsa-source"
++            node.description       = "PCM Source"
++            media.class            = "Audio/Source"
++            api.alsa.path          = "hw:0,0"
++            api.alsa.period-size   = 1024
++            api.alsa.headroom      = 0
++            api.alsa.disable-mmap  = false
++            api.alsa.disable-batch = false
++            audio.format           = "S16LE"
++            audio.rate             = 48000
++            audio.channels         = 2
++            audio.position         = "FL,FR"
++        }
++    }
++
++    { factory = adapter
++        args = {
++            factory.name           = api.alsa.pcm.sink
++            node.name              = "alsa-sink"
++            node.description       = "PCM Sink"
++            media.class            = "Audio/Sink"
++            api.alsa.path          = "hw:0,1"
++            api.alsa.period-size   = 1024
++            api.alsa.headroom      = 0
++            api.alsa.disable-mmap  = false
++            api.alsa.disable-batch = false
++            audio.format           = "S16LE"
++            audio.rate             = 48000
++            audio.channels         = 2
++            audio.position         = "FL,FR"
++        }
++    }
+ ]
+ 
+ context.exec = [
+diff -purN a/src/daemon/pipewire-pulse.conf.in b/src/daemon/pipewire-pulse.conf.in
+--- a/src/daemon/pipewire-pulse.conf.in	2022-10-13 16:54:09.376674871 +0800
++++ b/src/daemon/pipewire-pulse.conf.in	2022-10-13 16:51:39.515754495 +0800
+@@ -17,12 +17,13 @@ context.spa-libs = {
+ }
+ 
+ context.modules = [
+-    { name = libpipewire-module-rtkit
++    # Set thread priorities without using RTKit.
++    { name = libpipewire-module-rt
+         args = {
+-            #nice.level   = -11
+-            #rt.prio      = 88
+-            #rt.time.soft = 2000000
+-            #rt.time.hard = 2000000
++            nice.level   = -11
++            rt.prio      = 88
++            rt.time.soft = 2000000
++            rt.time.hard = 2000000
+         }
+         flags = [ ifexists nofail ]
+     }

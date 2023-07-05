@@ -1,0 +1,113 @@
+From ce9bc4f0ab892431c475577be825816fea5a2dd8 Mon Sep 17 00:00:00 2001
+From: "minda.chen" <minda.chen@starfivetech.com>
+Date: Fri, 19 Aug 2022 09:47:28 +0800
+Subject: [PATCH] fix mount adb devices issue
+
+Signed-off-by: minda.chen <minda.chen@starfivetech.com>
+---
+ core/adbd/usb_linux_client.c | 64 ++++++++++++++++++++----------------
+ 1 file changed, 35 insertions(+), 29 deletions(-)
+
+diff --git a/core/adbd/usb_linux_client.c b/core/adbd/usb_linux_client.c
+index eccf45b..6875394 100644
+--- a/core/adbd/usb_linux_client.c
++++ b/core/adbd/usb_linux_client.c
+@@ -363,34 +363,36 @@ static void init_functionfs(struct usb_handle *h)
+     v2_descriptor.os_header = os_desc_header;
+     v2_descriptor.os_desc = os_desc_compat;
+ 
+-    D("OPENING %s", USB_FFS_ADB_EP0);
+-    h->control = adb_open(USB_FFS_ADB_EP0, O_RDWR);
+     if (h->control < 0) {
+-        D("[ %s: cannot open control endpoint: errno=%d]\n", USB_FFS_ADB_EP0, errno);
+-        goto err;
+-    }
+-
+-    ret = adb_write(h->control, &v2_descriptor, sizeof(v2_descriptor));
+-    if (ret < 0 && errno == EINVAL) {
+-        v1_descriptor.header.magic = cpu_to_le32(FUNCTIONFS_DESCRIPTORS_MAGIC);
+-        v1_descriptor.header.length = cpu_to_le32(sizeof(v1_descriptor));
+-        v1_descriptor.header.fs_count = 3;
+-        v1_descriptor.header.hs_count = 3;
+-        v1_descriptor.fs_descs = fs_descriptors;
+-        v1_descriptor.hs_descs = hs_descriptors;
+-        D("[ %s: Switching to V1_descriptor format errno=%d ]", USB_FFS_ADB_EP0, errno);
+-        ret = adb_write(h->control, &v1_descriptor, sizeof(v1_descriptor));
+-    }
++	D("OPENING %s", USB_FFS_ADB_EP0);
++	h->control = adb_open(USB_FFS_ADB_EP0, O_RDWR);
++	if (h->control < 0) {
++	    D("[ %s: cannot open control endpoint: errno=%d]\n", USB_FFS_ADB_EP0, errno);
++	    goto err;
++	}
++
++	ret = adb_write(h->control, &v2_descriptor, sizeof(v2_descriptor));
++	if (ret < 0 && errno == EINVAL) {
++            v1_descriptor.header.magic = cpu_to_le32(FUNCTIONFS_DESCRIPTORS_MAGIC);
++            v1_descriptor.header.length = cpu_to_le32(sizeof(v1_descriptor));
++            v1_descriptor.header.fs_count = 3;
++            v1_descriptor.header.hs_count = 3;
++            v1_descriptor.fs_descs = fs_descriptors;
++            v1_descriptor.hs_descs = hs_descriptors;
++            D("[ %s: Switching to V1_descriptor format errno=%d ]", USB_FFS_ADB_EP0, errno);
++            ret = adb_write(h->control, &v1_descriptor, sizeof(v1_descriptor));
++	}
+ 
+-    if (ret < 0) {
+-        D("[ %s: write descriptors failed: errno=%d ]\n", USB_FFS_ADB_EP0, errno);
+-        goto err;
+-    }
++        if (ret < 0) {
++            D("[ %s: write descriptors failed: errno=%d ]\n", USB_FFS_ADB_EP0, errno);
++            goto err;
++        }
+ 
+-    ret = adb_write(h->control, &strings, sizeof(strings));
+-    if (ret < 0) {
+-        D("[ %s: writing strings failed: errno=%d]\n", USB_FFS_ADB_EP0, errno);
+-        goto err;
++        ret = adb_write(h->control, &strings, sizeof(strings));
++        if (ret < 0) {
++            D("[ %s: writing strings failed: errno=%d]\n", USB_FFS_ADB_EP0, errno);
++            goto err;
++	}
+     }
+ 
+     h->bulk_out = adb_open(USB_FFS_ADB_OUT, O_RDWR);
+@@ -430,14 +432,14 @@ static void *usb_ffs_open_thread(void *x)
+     while (1) {
+         // wait until the USB device needs opening
+         adb_mutex_lock(&usb->lock);
+-        while (usb->control != -1)
++        while (usb->control != -1 && usb->bulk_in != -1 && usb->bulk_out != -1)
+             adb_cond_wait(&usb->notify, &usb->lock);
+         adb_mutex_unlock(&usb->lock);
+ 
+         while (1) {
+             init_functionfs(usb);
+ 
+-            if (usb->control >= 0)
++            if (usb->control >= 0 && usb->bulk_in >= 0 && usb->bulk_out >= 0)
+                 break;
+ 
+             adb_sleep_ms(1000);
+@@ -534,10 +536,14 @@ static void usb_ffs_kick(usb_handle *h)
+         D("[ kick: sink (fd=%d) clear halt failed (%d) ]", h->bulk_out, errno);
+ 
+     adb_mutex_lock(&h->lock);
+-    adb_close(h->control);
++
++    // don't close ep0 here, since we may not need to reinitialize it with
++    // the same descriptors again. if however ep1/ep2 fail to re-open in
++    // init_functionfs, only then would we close and open ep0 again.
++
+     adb_close(h->bulk_out);
+     adb_close(h->bulk_in);
+-    h->control = h->bulk_out = h->bulk_in = -1;
++    h->bulk_out = h->bulk_in = -1;
+ 
+     // notify usb_ffs_open_thread that we are disconnected
+     adb_cond_signal(&h->notify);
+-- 
+2.17.1
+

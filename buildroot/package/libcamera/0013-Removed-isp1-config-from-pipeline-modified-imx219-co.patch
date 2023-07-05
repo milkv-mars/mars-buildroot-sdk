@@ -1,0 +1,158 @@
+From 3c0db39c0acd04c9ddfd37279efb9bf47bf1f74c Mon Sep 17 00:00:00 2001
+From: "Kevin.xie" <kevin.xie@starfivetech.com>
+Date: Thu, 9 Jun 2022 19:08:14 +0800
+Subject: [PATCH] Removed isp1 config from pipeline & modified imx219 config
+
+Signed-off-by: Kevin.xie <kevin.xie@starfivetech.com>
+---
+ .../pipeline/starfive/sensors_pipeline.yaml   |  6 +--
+ src/libcamera/pipeline/starfive/starfive.cpp  | 47 +------------------
+ 2 files changed, 2 insertions(+), 51 deletions(-)
+
+diff --git a/src/libcamera/pipeline/starfive/sensors_pipeline.yaml b/src/libcamera/pipeline/starfive/sensors_pipeline.yaml
+index 3446b0a..dc4fc63 100644
+--- a/src/libcamera/pipeline/starfive/sensors_pipeline.yaml
++++ b/src/libcamera/pipeline/starfive/sensors_pipeline.yaml
+@@ -25,11 +25,7 @@
+ #
+ ---
+ sensors:
+-  - sensorentity: "imx219 0-0010"
++  - sensorentity: "imx219 6-0010"
+     ispfwimage: "stf_isp0_fw_dump.bin"
+     sensortype: 4
+-
+-  - sensorentity: "imx219 2-0010"
+-    ispfwimage: "stf_isp0_fw_dump.bin"
+-    sensortype: 8
+ ...
+diff --git a/src/libcamera/pipeline/starfive/starfive.cpp b/src/libcamera/pipeline/starfive/starfive.cpp
+index cc4cd1e..7f97069 100644
+--- a/src/libcamera/pipeline/starfive/starfive.cpp
++++ b/src/libcamera/pipeline/starfive/starfive.cpp
+@@ -55,9 +55,6 @@ typedef enum {
+ 	DVP_ISP0,    // ISP0
+ 	MIPICSI0_ISP0,
+ 	MIPICSI1_ISP0,
+-	DVP_ISP1,    // ISP1
+-	MIPICSI0_ISP1,
+-	MIPICSI1_ISP1,
+ 	SENSORTYPE_MAX
+ } SensorType;
+ 
+@@ -68,8 +65,7 @@ typedef struct {
+ } SensorConfig;
+ 
+ const std::vector<SensorConfig> defaultSensorConfigs = {
+-	{ "imx219 0-0010", "stf_isp0_fw_dump.bin", MIPICSI0_ISP0 },
+-	{ "imx219 2-0010", "stf_isp0_fw_dump.bin", MIPICSI1_ISP1 },
++	{ "imx219 6-0010", "stf_isp0_fw_dump.bin", MIPICSI0_ISP0 },
+ };
+ 
+ std::vector<SensorConfig> sensorConfigs;
+@@ -109,30 +105,11 @@ const std::vector<PipelineConfigLink> mipicsi1raw0Config = {
+ 	{"stf_csi1", 1, "stf_isp0", 0},
+ };
+ 
+-const std::vector<PipelineConfigLink> dvpraw1Config = {
+-	{"stf_dvp0", 1, "stf_isp1", 0},
+-};
+-
+-const std::vector<PipelineConfigLink> mipicsi0raw1Config = {
+-	{"stf_csiphy0", 1, "stf_csi0", 0},
+-	{"stf_csi0", 1, "stf_isp1", 0},
+-};
+-
+-const std::vector<PipelineConfigLink> mipicsi1raw1Config = {
+-	{"stf_csiphy1", 1, "stf_csi1", 0},
+-	{"stf_csi1", 1, "stf_isp1", 0},
+-};
+-
+ const std::vector<PipelineConfigLink> isp0Config = {
+ 	{"stf_isp0", 1, "stf_vin0_isp0", 0},
+ 	{"stf_isp0", 6, "stf_vin0_isp0_raw", 0}
+ };
+ 
+-const std::vector<PipelineConfigLink> isp1Config = {
+-	{"stf_isp1", 1, "stf_vin0_isp1", 0},
+-	{"stf_isp1", 6, "stf_vin0_isp1_raw", 0}
+-};
+-
+ const std::vector<PipelineConfigLink> pipelineConfigs[SENSORTYPE_MAX] = {
+ 	dvpyuvConfig,
+ 	mipicsi0yuvConfig,
+@@ -140,9 +117,6 @@ const std::vector<PipelineConfigLink> pipelineConfigs[SENSORTYPE_MAX] = {
+ 	dvpraw0Config,
+ 	mipicsi0raw0Config,
+ 	mipicsi1raw0Config,
+-	dvpraw1Config,
+-	mipicsi0raw1Config,
+-	mipicsi1raw1Config,
+ };
+ 
+ } /* namespace */
+@@ -199,8 +173,6 @@ public:
+ 		videoEntityName_ = entityName;
+ 		if ( videoEntityName_ == "stf_vin0_isp0_video1")
+ 			ispEntityName_ = "stf_isp0";
+-		else if (videoEntityName_ == "stf_vin0_isp1_video8")
+-			ispEntityName_ = "stf_isp1";
+ 		else
+ 			ispEntityName_ = "unknow";
+ 
+@@ -260,8 +232,6 @@ private:
+ 		LOG(STARFIVE, Debug) << __func__;
+ 		if ( videoEntityName_ == "stf_vin0_isp0_video1")
+ 			return "stf_vin0_isp0_raw_video6";
+-		else if (videoEntityName_ == "stf_vin0_isp1_video8")
+-			return "stf_vin0_isp1_raw_video13";
+ 		else
+ 			return "unknow";
+ 	}
+@@ -984,11 +954,7 @@ std::string PipelineHandlerStarFive::getVideoEntityNameById(unsigned int id)
+ 	case 1:
+ 		return "stf_vin0_isp0_video1";
+ 	case 2:
+-		return "stf_vin0_isp1_video8";
+-	case 3:
+ 		return "stf_vin0_isp0_raw_video6";
+-	case 4:
+-		return "stf_vin0_isp1_raw_video13";
+ 	default:
+ 		return "unknow";
+ 	}
+@@ -1060,11 +1026,6 @@ int PipelineHandlerStarFive::registerCameras()
+ 		case MIPICSI1_ISP0:
+ 			id = 1;
+ 			break;
+-		case DVP_ISP1:
+-		case MIPICSI0_ISP1:
+-		case MIPICSI1_ISP1:
+-			id = 2;
+-			break;
+ 		default:
+ 			continue;
+ 		}
+@@ -1187,11 +1148,6 @@ int PipelineHandlerStarFive::enableLinks(int sensorType)
+ 		case MIPICSI1_ISP0:
+ 			ret = enableLinks(isp0Config);
+ 			break;
+-		case DVP_ISP1:
+-		case MIPICSI0_ISP1:
+-		case MIPICSI1_ISP1:
+-			ret = enableLinks(isp1Config);
+-			break;
+ 		default:
+ 			break;
+ 	}
+@@ -1256,7 +1212,6 @@ bool PipelineHandlerStarFive::match(DeviceEnumerator *enumerator)
+ 	DeviceMatch dm("stf-vin");
+ 	dm.add("stf_vin0_wr_video0");
+ 	dm.add("stf_vin0_isp0_video1");
+-	dm.add("stf_vin0_isp1_video8");
+ 
+ 	LOG(STARFIVE, Debug) << __func__;
+ 	starFiveMediaDev_ = acquireMediaDevice(enumerator, dm);
+-- 
+2.17.1
+

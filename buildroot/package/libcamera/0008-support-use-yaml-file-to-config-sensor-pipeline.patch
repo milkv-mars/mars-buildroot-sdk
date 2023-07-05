@@ -1,0 +1,249 @@
+From 4c51694d5f3fbb23423f60165f928e50e7d9c3a3 Mon Sep 17 00:00:00 2001
+From: sw.multimedia <sw.multimedia@starfivetech.com>
+Date: Wed, 15 Dec 2021 17:13:58 +0800
+Subject: [PATCH 08/10] support use yaml file to config sensor pipeline
+
+---
+ src/libcamera/meson.build                     |   3 +
+ .../pipeline/starfive/sensors_pipeline.yaml   |  35 ++++++
+ src/libcamera/pipeline/starfive/starfive.cpp  | 106 ++++++++++++++++--
+ 3 files changed, 132 insertions(+), 12 deletions(-)
+ create mode 100644 src/libcamera/pipeline/starfive/sensors_pipeline.yaml
+
+diff --git a/src/libcamera/meson.build b/src/libcamera/meson.build
+index 6727a777..39c44d42 100644
+--- a/src/libcamera/meson.build
++++ b/src/libcamera/meson.build
+@@ -113,6 +113,8 @@ if ipa_sign_module
+     libcamera_sources += ipa_pub_key_cpp
+ endif
+ 
++libyamlcpp = cc.find_library('yaml-cpp', required : true)
++
+ libcamera_deps = [
+     libatomic,
+     libcamera_base,
+@@ -121,6 +123,7 @@ libcamera_deps = [
+     libgnutls,
+     liblttng,
+     libudev,
++    libyamlcpp,
+ ]
+ 
+ # We add '/' to the build_rpath as a 'safe' path to act as a boolean flag.
+diff --git a/src/libcamera/pipeline/starfive/sensors_pipeline.yaml b/src/libcamera/pipeline/starfive/sensors_pipeline.yaml
+new file mode 100644
+index 00000000..3446b0ac
+--- /dev/null
++++ b/src/libcamera/pipeline/starfive/sensors_pipeline.yaml
+@@ -0,0 +1,35 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++#
++# Copyright (C) 2020, Google Inc.
++#
++%YAML 1.2
++# description:
++# sensors:
++#   - sensorentity: "imx219 0-0010"
++#       ispfwimage: "stf_isp0_fw_dump.bin"  isp fw image name
++#       sensortype: 4
++#
++#       sensortype value:
++#               {
++#               	DVP_YUV = 0,
++#               	MIPICSI0_YUV = 1,
++#               	MIPICSI1_YUV = 2,
++#               	DVP_ISP0 = 3,    // ISP0
++#               	MIPICSI0_ISP0 = 4,
++#               	MIPICSI1_ISP0 = 5,
++#               	DVP_ISP1 = 6,    // ISP1
++#               	MIPICSI0_ISP1 = 7,
++#               	MIPICSI1_ISP1 = 8,
++#               	SENSORTYPE_MAX
++#               }
++#
++---
++sensors:
++  - sensorentity: "imx219 0-0010"
++    ispfwimage: "stf_isp0_fw_dump.bin"
++    sensortype: 4
++
++  - sensorentity: "imx219 2-0010"
++    ispfwimage: "stf_isp0_fw_dump.bin"
++    sensortype: 8
++...
+diff --git a/src/libcamera/pipeline/starfive/starfive.cpp b/src/libcamera/pipeline/starfive/starfive.cpp
+index b91a85a4..864addfa 100644
+--- a/src/libcamera/pipeline/starfive/starfive.cpp
++++ b/src/libcamera/pipeline/starfive/starfive.cpp
+@@ -9,6 +9,8 @@
+ #include <queue>
+ #include <sys/mman.h>
+ #include <math.h>
++#include <yaml-cpp/yaml.h>
++#include <yaml-cpp/node/parse.h>
+ 
+ #include <libcamera/camera.h>
+ #include <libcamera/control_ids.h>
+@@ -39,14 +41,7 @@
+ 
+ #define STF_MAX_CAMERAS   3
+ 
+-namespace libcamera {
+-
+-LOG_DEFINE_CATEGORY(STARFIVE)
+-
+-static constexpr unsigned int BUFFER_COUNT = 4;
+-static constexpr unsigned int MAX_STREAMS = 2;
+-static const Size OUTPUT_MIN_SIZE = { 8, 8 };
+-static const Size OUTPUT_MAX_SIZE = { 8192, 8192 };
++#define PIPELINE_CONFIG_FILENAME "/etc/starfive/sensors_pipeline.yaml"
+ 
+ namespace {
+ 
+@@ -66,14 +61,16 @@ typedef enum {
+ typedef struct {
+ 	std::string sensorEntityName_;
+ 	std::string sensorFwImageName_;
+-	SensorType sensorType_;
++	int sensorType_;
+ } SensorConfig;
+ 
+-const std::vector<SensorConfig> sensorConfigs = {
++const std::vector<SensorConfig> defaultSensorConfigs = {
+ 	{ "imx219 0-0010", "stf_isp0_fw_dump.bin", MIPICSI0_ISP0 },
+ 	{ "imx219 2-0010", "stf_isp0_fw_dump.bin", MIPICSI1_ISP1 },
+ };
+ 
++std::vector<SensorConfig> sensorConfigs;
++
+ typedef struct {
+ 	std::string source;
+ 	std::string link;
+@@ -139,6 +136,40 @@ const std::vector<PipelineConfigLink> pipelineConfigs[SENSORTYPE_MAX] = {
+ 	mipicsi1raw1Config,
+ };
+ 
++} /* namespace */
++
++namespace YAML {
++	template<>
++	struct convert<SensorConfig> {
++		static Node encode(const SensorConfig& sensor) {
++			Node node;
++			node.push_back(sensor.sensorEntityName_);
++			node.push_back(sensor.sensorFwImageName_);
++			node.push_back(sensor.sensorType_);
++			return node;
++		}
++
++		static bool decode(const Node& node, SensorConfig& sensor) {
++			if(node.size() != 3)
++				return false;
++
++			sensor.sensorEntityName_ = node["sensorentity"].as<std::string>();
++			sensor.sensorFwImageName_ = node["ispfwimage"].as<std::string>();
++			sensor.sensorType_ = node["sensortype"].as<int>();
++			return true;
++		}
++	};
++}
++
++namespace libcamera {
++
++LOG_DEFINE_CATEGORY(STARFIVE)
++
++static constexpr unsigned int BUFFER_COUNT = 4;
++static constexpr unsigned int MAX_STREAMS = 2;
++static const Size OUTPUT_MIN_SIZE = { 8, 8 };
++static const Size OUTPUT_MAX_SIZE = { 8192, 8192 };
++
+ const std::map<uint32_t, PixelFormat> mbusCodesToPixelFormat = {
+ 	{ MEDIA_BUS_FMT_SBGGR10_1X10, formats::SBGGR12 },
+ 	{ MEDIA_BUS_FMT_SGBRG10_1X10, formats::SGBRG12 },
+@@ -146,8 +177,6 @@ const std::map<uint32_t, PixelFormat> mbusCodesToPixelFormat = {
+ 	{ MEDIA_BUS_FMT_SRGGB10_1X10, formats::SRGGB12 },
+ };
+ 
+-} /* namespace */
+-
+ class StarFiveCameraData : public Camera::Private
+ {
+ public:
+@@ -423,6 +452,7 @@ private:
+ 	int enableLinks(std::vector<PipelineConfigLink> config);
+ 
+ 	MediaDevice *starFiveMediaDev_;
++	int parserPipelineConfig(const char *filename);
+ };
+ 
+ StarFiveCameraConfiguration::StarFiveCameraConfiguration(StarFiveCameraData *data)
+@@ -1042,6 +1072,56 @@ int PipelineHandlerStarFive::enableLinks(std::vector<PipelineConfigLink> config)
+ 	return ret;
+ }
+ 
++static void loaddefaultSensorConfig(void)
++{
++	LOG(STARFIVE, Debug) << __func__;
++	sensorConfigs.clear();
++	for (SensorConfig it : defaultSensorConfigs)
++		sensorConfigs.push_back(it);
++}
++
++static void printSensorConfig(void)
++{
++	for (SensorConfig it : sensorConfigs)
++		LOG(STARFIVE, Debug)
++			<< " sensorEntityName: " << it.sensorEntityName_
++			<< ", ispLoadFW: " << it.sensorFwImageName_
++			<< ", sensorType: " << it.sensorType_;
++}
++
++int PipelineHandlerStarFive::parserPipelineConfig(const char *filename)
++{
++	LOG(STARFIVE, Debug) << __func__;
++	try {
++		YAML::Node config = YAML::LoadFile(PIPELINE_CONFIG_FILENAME);
++
++		if (config["sensors"]) {
++			std::vector<SensorConfig> sensors =
++				config["sensors"].as<std::vector<SensorConfig>>();
++			int found = 0;
++
++			for (SensorConfig it : sensors) {
++				found = 0;
++				for (SensorConfig its : sensorConfigs) {
++					if (its.sensorEntityName_ == it.sensorEntityName_) {
++						found = 1;
++						break;
++					}
++				}
++				if (!found)
++					sensorConfigs.push_back(it);
++			}
++		}
++	} catch(std::exception const & e) {
++		LOG(STARFIVE, Debug) << PIPELINE_CONFIG_FILENAME
++			<< " yaml file error, use default config!!!";
++		loaddefaultSensorConfig();
++	}
++
++	printSensorConfig();
++	return 0;
++}
++
+ bool PipelineHandlerStarFive::match(DeviceEnumerator *enumerator)
+ {
+ 	int numCameras = 0;
+@@ -1059,6 +1139,8 @@ bool PipelineHandlerStarFive::match(DeviceEnumerator *enumerator)
+ 	if (starFiveMediaDev_->disableLinks())
+ 		return false;
+ 
++	parserPipelineConfig(PIPELINE_CONFIG_FILENAME);
++
+ 	for (SensorConfig it : sensorConfigs) {
+ 		MediaEntity *sensorEntity =
+ 			starFiveMediaDev_->getEntityByName(it.sensorEntityName_);
+-- 
+2.25.1
+

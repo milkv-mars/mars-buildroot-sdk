@@ -1,0 +1,12 @@
+diff -purN ifplugd-0.28.orig/conf/ifplugd.conf ifplugd-0.28/conf/ifplugd.conf
+--- ifplugd-0.28.orig/conf/ifplugd.conf	2003-12-12 01:58:43.000000000 +0800
++++ ifplugd-0.28/conf/ifplugd.conf	2022-12-06 16:37:58.939672090 +0800
+@@ -30,7 +30,7 @@
+ # according to /proc/net/dev. Note that the list of interfaces
+ # appearing in /proc/net/dev may depend on which kernel modules you
+ # have loaded.
+-INTERFACES="eth0"
++INTERFACES="eth0 eth1"
+
+ # Additional parameters for ifplugd.
+ # (Run "ifplugd -h" for further information.)

@@ -1,0 +1,4 @@
+config BR2_PACKAGE_HOST_STFISP_SETFILE
+	bool "host generate isp fw"
+	help
+	  stfisp_setfile is a tool to generate ISP fw image

@@ -1,0 +1,30 @@
+From 4810d94989891c7bb825ab5847b7e01e9db5e14d Mon Sep 17 00:00:00 2001
+From: sw.multimedia <sw.multimedia@starfivetech.com>
+Date: Wed, 17 Nov 2021 10:07:35 +0800
+Subject: [PATCH 05/10] fix build gen version error
+
+---
+ utils/gen-version.sh | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/utils/gen-version.sh b/utils/gen-version.sh
+index eb7c7268..ef548100 100755
+--- a/utils/gen-version.sh
++++ b/utils/gen-version.sh
+@@ -3,6 +3,8 @@
+ # SPDX-License-Identifier: GPL-2.0-or-later
+ # Generate a version string using git describe
+ 
++workdir=$PWD
++cd ../../../../buildroot/dl/libcamera/git/
+ build_dir="$1"
+ src_dir="$2"
+ 
+@@ -48,3 +50,4 @@ git diff-index --quiet HEAD || version="$version-dirty ($(date --iso-8601=second
+ version=$(echo "$version" | sed -e 's/-/+/' | sed -e 's/-g/-/' | cut -c 2-)
+ 
+ echo "$version"
++cd $workdir
+-- 
+2.25.1
+

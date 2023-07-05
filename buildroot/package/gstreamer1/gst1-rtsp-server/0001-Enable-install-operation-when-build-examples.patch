@@ -1,0 +1,25 @@
+From 25af3820863d70905268710761784fd84298f80f Mon Sep 17 00:00:00 2001
+From: "andy.hu" <andy.hu@starfive.com>
+Date: Mon, 25 Oct 2021 11:13:54 +0800
+Subject: [PATCH] Enable install operation when build examples
+
+---
+ examples/meson.build | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/examples/meson.build b/examples/meson.build
+index 2bacd48..757ac49 100644
+--- a/examples/meson.build
++++ b/examples/meson.build
+@@ -26,7 +26,7 @@ foreach example : examples
+     c_args : rtspserver_args,
+     include_directories : rtspserver_incs,
+     dependencies : [glib_dep, gst_dep, gstapp_dep, gstnet_dep, gst_rtsp_server_dep],
+-    install: false)
++    install: true)
+ endforeach
+ 
+ cgroup_dep = dependency('libcgroup', version : '>= 0.26', required : false)
+-- 
+2.33.0
+

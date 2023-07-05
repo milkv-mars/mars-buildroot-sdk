@@ -1,0 +1,7 @@
+comment "wave420l package"
+
+config BR2_PACKAGE_WAVE420L
+	bool "wave420l"
+	help
+	  wave420l package
+

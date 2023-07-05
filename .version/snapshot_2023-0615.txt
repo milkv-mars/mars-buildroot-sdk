@@ -1,0 +1,6 @@
+root          JH7110_VisionFive2_devel  4f00f8d9b114afbb7d662847c5b841739cb2a019
+u-boot        JH7110_VisionFive2_devel  b6e2b0e85c774a18ae668223a6e5f7d335895243
+linux         JH7110_VisionFive2_devel  d9eee31aaec51ade1641391836c1f07dd2151a4a
+buildroot     JH7110_VisionFive2_devel  7000eea7a794c5e63c8abf5df5ec7f17a1e5614b
+soft_3rdpart  JH7110_VisionFive2_devel  a8d360763d203874fefe38fad2b041b98d674743
+opensbi       master                    c6a092cd80112529cb2e92e180767ff5341b22a3

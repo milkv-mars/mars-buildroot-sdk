@@ -1,0 +1,254 @@
+From 4d84bab2e88580bb96a24343051f2ea8132dc4e3 Mon Sep 17 00:00:00 2001
+From: sw.multimedia <sw.multimedia@starfivetech.com>
+Date: Thu, 13 Jan 2022 14:44:18 +0800
+Subject: [PATCH 10/10] libcamera: add framerate for request pad src.
+
+---
+ include/libcamera/internal/v4l2_videodevice.h |  7 +-
+ include/libcamera/stream.h                    |  8 +++
+ src/gstreamer/gstlibcamera-utils.cpp          | 16 +++--
+ src/libcamera/pipeline/starfive/starfive.cpp  | 37 ++++++++++
+ src/libcamera/v4l2_videodevice.cpp            | 68 +++++++++++++++++++
+ 5 files changed, 131 insertions(+), 5 deletions(-)
+
+diff --git a/include/libcamera/internal/v4l2_videodevice.h b/include/libcamera/internal/v4l2_videodevice.h
+index a1c458e4..650da22d 100644
+--- a/include/libcamera/internal/v4l2_videodevice.h
++++ b/include/libcamera/internal/v4l2_videodevice.h
+@@ -35,6 +35,11 @@ class FileDescriptor;
+ class MediaDevice;
+ class MediaEntity;
+ 
++struct V4L2Framerate {
++	uint32_t num = 0;
++	uint32_t denom = 0;
++};
++
+ struct V4L2Capability final : v4l2_capability {
+ 	const char *driver() const
+ 	{
+@@ -215,7 +220,7 @@ public:
+ 
+ 	static std::unique_ptr<V4L2VideoDevice>
+ 	fromEntityName(const MediaDevice *media, const std::string &entity);
+-
++	std::vector<V4L2Framerate> getFramerates(uint32_t pixelformat, uint32_t width, uint32_t height);
+ protected:
+ 	std::string logPrefix() const override;
+ 
+diff --git a/include/libcamera/stream.h b/include/libcamera/stream.h
+index 0c55e716..2e06d7d8 100644
+--- a/include/libcamera/stream.h
++++ b/include/libcamera/stream.h
+@@ -36,6 +36,11 @@ private:
+ 	std::map<PixelFormat, std::vector<SizeRange>> formats_;
+ };
+ 
++struct Framerate {
++	uint32_t num = 0;
++	uint32_t denom = 0;
++};
++
+ struct StreamConfiguration {
+ 	StreamConfiguration();
+ 	StreamConfiguration(const StreamFormats &formats);
+@@ -51,11 +56,14 @@ struct StreamConfiguration {
+ 	void setStream(Stream *stream) { stream_ = stream; }
+ 	const StreamFormats &formats() const { return formats_; }
+ 
++	void setframeRates(std::vector<Framerate> framerates) { rates = framerates; }
++	const std::vector<Framerate> getframeRates() const { return rates; }
+ 	std::string toString() const;
+ 
+ private:
+ 	Stream *stream_;
+ 	StreamFormats formats_;
++	std::vector<Framerate> rates;
+ };
+ 
+ enum StreamRole {
+diff --git a/src/gstreamer/gstlibcamera-utils.cpp b/src/gstreamer/gstlibcamera-utils.cpp
+index bce4960a..4cd07508 100644
+--- a/src/gstreamer/gstlibcamera-utils.cpp
++++ b/src/gstreamer/gstlibcamera-utils.cpp
+@@ -140,10 +140,18 @@ gst_libcamera_stream_configuration_to_caps(const StreamConfiguration &stream_cfg
+ 			  "height", G_TYPE_INT, stream_cfg.size.height,
+ 			  nullptr);
+ 
+-	// Add framerate negotiation support
+-	// the range will be [ 0/1, 2147483647/1 ] as there is not any args 
+-	// required from driver for the time being.
+-	gst_structure_set(s, "framerate", GST_TYPE_FRACTION_RANGE, 0, 1, G_MAXINT, 1, NULL);
++	std::vector<libcamera::Framerate> rates = stream_cfg.getframeRates();
++	guint index = 0;
++	for (libcamera::Framerate it : rates) {
++		libcamera::Framerate rate = it;
++		gst_structure_set (s, "framerate", GST_TYPE_FRACTION, rate.denom, rate.num, NULL);
++                //truncate rates. only remain the first one.
++		if ( index == 0)
++		{
++			break;
++		}
++		index++;
++	}
+ 
+ 	gst_caps_append_structure(caps, s);
+ 
+diff --git a/src/libcamera/pipeline/starfive/starfive.cpp b/src/libcamera/pipeline/starfive/starfive.cpp
+index 61a2ddc6..997d9835 100644
+--- a/src/libcamera/pipeline/starfive/starfive.cpp
++++ b/src/libcamera/pipeline/starfive/starfive.cpp
+@@ -43,6 +43,9 @@
+ 
+ #define PIPELINE_CONFIG_FILENAME "/etc/starfive/sensors_pipeline.yaml"
+ 
++#define DEFAULT_FRAMERATE_NUM 25;
++#define DEFAULT_FRAMERATE_DENOM 1;
++
+ namespace {
+ 
+ typedef enum {
+@@ -225,6 +228,8 @@ public:
+ 	std::vector<SizeRange> sensorSizes() const;
+ 	std::vector<PixelFormat> sensorFormats() const;
+ 	std::vector<PixelFormat> videoFormats() const;
++	std::vector<Framerate> videoFrameRates(unsigned int pixelformat, unsigned int width, unsigned int height) const;
++
+ 	void paramsFilled(unsigned int id){}
+ 	int ispLoadFW(const char *filename);
+ 
+@@ -269,6 +274,24 @@ std::vector<PixelFormat> StarFiveCameraData::videoFormats() const
+ 	return formats;
+ }
+ 
++std::vector<Framerate> StarFiveCameraData::videoFrameRates(unsigned int pixelformat, unsigned int width, unsigned int height) const
++{
++	if (!video_)
++		return {};
++
++	std::vector<Framerate> framerates;
++	for (auto it : video_->getFramerates(pixelformat, width, height)) {
++		V4L2Framerate v4l2_framerate = (V4L2Framerate)it;
++		libcamera::Framerate rate;
++		rate.num = v4l2_framerate.num;
++		rate.denom = v4l2_framerate.denom;
++		LOG(STARFIVE, Debug) << "videoFrameRates framerate:  rate.num=" << rate.num << " rate.denom= " << rate.denom;
++		framerates.push_back(rate);
++	}
++
++	return framerates;
++}
++
+ std::vector<PixelFormat> StarFiveCameraData::sensorFormats() const
+ {
+ 	if (!sensor_)
+@@ -480,6 +503,20 @@ CameraConfiguration::Status StarFiveCameraConfiguration::validate()
+ 		cfg.size.height = std::max(OUTPUT_MIN_SIZE.height,
+ 				std::min(OUTPUT_MAX_SIZE.height, cfg.size.height));
+ 
++		std::vector<Framerate> rates;
++		rates = data_->videoFrameRates(cfg.pixelFormat,size.width, size.height);
++		if (rates.size() > 0){
++			cfg.setframeRates(rates);
++		} else {
++			LOG(STARFIVE, Debug)
++				<< "fail to obtian framerate, use default one ";
++			Framerate rate;
++			rate.num = DEFAULT_FRAMERATE_NUM;
++			rate.denom = DEFAULT_FRAMERATE_DENOM;
++			rates.emplace_back(rate);
++			cfg.setframeRates(rates);
++		}
++
+ 		if (cfg.size != size) {
+ 			LOG(STARFIVE, Debug)
+ 				<< "Adjusting size to " << cfg.size.toString();
+diff --git a/src/libcamera/v4l2_videodevice.cpp b/src/libcamera/v4l2_videodevice.cpp
+index 4f04212d..5ccf70d9 100644
+--- a/src/libcamera/v4l2_videodevice.cpp
++++ b/src/libcamera/v4l2_videodevice.cpp
+@@ -31,6 +31,7 @@
+ #include "libcamera/internal/framebuffer.h"
+ #include "libcamera/internal/media_device.h"
+ #include "libcamera/internal/media_object.h"
++#include <limits.h>
+ 
+ /**
+  * \file v4l2_videodevice.h
+@@ -1847,6 +1848,73 @@ V4L2VideoDevice::fromEntityName(const MediaDevice *media,
+ 	return std::make_unique<V4L2VideoDevice>(mediaEntity);
+ }
+ 
++std::vector<V4L2Framerate> V4L2VideoDevice::getFramerates(uint32_t pixelformat, uint32_t width, uint32_t height)
++{
++	struct v4l2_frmivalenum ival;
++	uint32_t num, denom;
++
++	memset (&ival, 0, sizeof (struct v4l2_frmivalenum));
++	ival.index = 0;
++	ival.pixel_format = pixelformat;
++	ival.width = width;
++	ival.height = height;
++	std::vector<V4L2Framerate> rates;
++	LOG(V4L2, Debug) << "getFramerates: width: " << width << " height: " << height << " pixelformat " << pixelformat;
++
++	if (ioctl (VIDIOC_ENUM_FRAMEINTERVALS, &ival) < 0){
++		LOG(V4L2, Error) << "fail to ioctl: VIDIOC_ENUM_FRAMEINTERVALS";
++		goto enum_frameintervals_failed;
++	}
++
++	if (ival.type == V4L2_FRMIVAL_TYPE_DISCRETE) {
++		struct V4L2Framerate rate;
++		do {
++			num = ival.discrete.numerator;
++			denom = ival.discrete.denominator;
++
++			if (num > INT_MAX || denom > INT_MAX) {
++				/* let us hope we don't get here... */
++				LOG(V4L2, Error) << "num or denom is beyond INT_MAX";
++				goto enum_frameintervals_failed;
++			}
++
++			// /* swap to get the framerate */
++			// gst_value_set_fraction (&rate, denom, num);
++			rate.denom = denom;
++			rate.num = num;
++			LOG(V4L2, Debug) << "gstFramerates adding discrete framerate: " << denom << "/" << num;
++			rates.emplace_back(rate);
++			ival.index++;
++		} while (ioctl (VIDIOC_ENUM_FRAMEINTERVALS, &ival) >= 0);
++	} else if (ival.type == V4L2_FRMIVAL_TYPE_STEPWISE){
++		//TODO 
++		goto enum_frameintervals_unimplemented;
++	} else if (ival.type == V4L2_FRMIVAL_TYPE_CONTINUOUS) {
++		num = ival.stepwise.min.numerator;
++		denom = ival.stepwise.min.denominator;
++		if (num > INT_MAX || denom > INT_MAX) {
++			LOG(V4L2, Error) << "continuous frame interval: num or denom is beyond INT_MAX";
++			goto enum_frameintervals_failed;
++		}
++
++		struct V4L2Framerate rate;
++		rate.denom = denom;
++		rate.num = num;
++		LOG(V4L2, Debug) << "gstFramerates continuous frame interval: " << denom << "/" <<num;
++		rates.emplace_back(rate);
++	}
++
++	return rates;
++
++enum_frameintervals_failed:
++enum_frameintervals_unimplemented:
++{
++	LOG(V4L2, Error) << "fail to obtain framerate !!!";
++	return rates;
++}
++
++}
++
+ /**
+  * \class V4L2M2MDevice
+  * \brief Memory-to-Memory video device
+-- 
+2.25.1
+

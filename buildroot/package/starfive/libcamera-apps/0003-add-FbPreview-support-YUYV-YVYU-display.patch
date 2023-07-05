@@ -1,0 +1,224 @@
+From 4fd0d73ae92f4e0f49c9d0f9f7e559e55e4fe2a8 Mon Sep 17 00:00:00 2001
+From: sw.multimedia <sw.multimedia@starfivetech.com>
+Date: Mon, 22 Nov 2021 15:28:17 +0800
+Subject: [PATCH] add FbPreview support YUYV/YVYU display
+
+---
+ preview/fb_preview.cpp | 123 +++++++++++++++++++++++++++++++++++------
+ preview/preview.cpp    |  15 +++--
+ 2 files changed, 118 insertions(+), 20 deletions(-)
+
+diff --git a/preview/fb_preview.cpp b/preview/fb_preview.cpp
+index 1a88b79..0b42ad1 100644
+--- a/preview/fb_preview.cpp
++++ b/preview/fb_preview.cpp
+@@ -44,6 +44,7 @@ enum COLOR_FORMAT {
+ 	COLOR_RGB888_RGBA,      // 9
+ 	COLOR_RGB888_BGRA,      // 10
+ 	COLOR_RGB565,           // 11
++	COLOR_UNKOWN,           // unkown
+ };
+ 
+ struct pp_video_mode {
+@@ -83,6 +84,10 @@ public:
+ private:
+ 	int NVResize(unsigned char *inBuf,
+ 		unsigned char *outBuf, int imgWidth, int imgHeight);
++	int YUYVResize(unsigned char *inBuf,
++		unsigned char *outBuf, int imgWidth, int imgHeight);
++	void setPixformat(unsigned int format);
++	unsigned int getPixformat(void);
+ 	int g_fb_fd;
+ 	int g_stfbc_fd;
+ 	struct fb_var_screeninfo g_vinfo;
+@@ -93,10 +98,8 @@ private:
+ 	enum COLOR_FORMAT pixformat;
+ };
+ 
+-static enum COLOR_FORMAT v4l2fmt_to_fbfmt(unsigned int format)
++void FbPreview::setPixformat(unsigned int format)
+ {
+-	enum COLOR_FORMAT pixformat = COLOR_RGB565;
+-
+ 	switch (format) {
+ 	case V4L2_PIX_FMT_RGB565:
+ 		pixformat = COLOR_RGB565;
+@@ -120,11 +123,43 @@ static enum COLOR_FORMAT v4l2fmt_to_fbfmt(unsigned int format)
+ 		pixformat = COLOR_YUV422_YVYU;
+ 		break;
+ 	default:
+-		pixformat = COLOR_RGB565;
++		pixformat = COLOR_UNKOWN;
+ 		break;
+ 	}
++}
+ 
+-	return pixformat;
++unsigned int FbPreview::getPixformat(void)
++{
++	unsigned int format;
++
++	switch (pixformat) {
++	case COLOR_RGB565:
++		format = V4L2_PIX_FMT_RGB565;
++		break;
++	case COLOR_RGB888_ARGB:
++		format = V4L2_PIX_FMT_RGB24;
++		break;
++	case COLOR_YUV420P:
++		format = V4L2_PIX_FMT_YUV420;
++		break;
++	case COLOR_YUV422_YUYV:
++		format = V4L2_PIX_FMT_YUYV;
++		break;
++	case COLOR_YUV420_NV21:
++		format = V4L2_PIX_FMT_NV21;
++		break;
++	case COLOR_YUV420_NV12:
++		format = V4L2_PIX_FMT_NV12;
++		break;
++	case COLOR_YUV422_YVYU:
++		format = V4L2_PIX_FMT_YVYU;
++		break;
++	default:
++		format = 0;
++		break;
++	}
++
++	return format;
+ }
+ 
+ FbPreview::FbPreview(Options const *options) : Preview(options)
+@@ -140,10 +175,10 @@ FbPreview::FbPreview(Options const *options) : Preview(options)
+ 	libcamera::PixelFormat pixelFormat =
+ 		libcamera::PixelFormat::fromString(options_->pixelformat);
+ 
+-	if (pixelFormat.fourcc() != V4L2_PIX_FMT_NV12)
+-		throw std::runtime_error("FB onlu support NV12 display");
++	setPixformat(pixelFormat.fourcc());
++	if (pixformat == COLOR_UNKOWN)
++		throw std::runtime_error("FB unsupport format display.");
+ 
+-	pixformat = v4l2fmt_to_fbfmt(pixelFormat.fourcc());
+ 	if (-1 == ioctl(g_stfbc_fd, FBIOPAN_GET_PP_MODE, &pp_info[0]))
+ 		throw std::runtime_error("Error reading variable information.");
+ 
+@@ -217,9 +252,6 @@ int FbPreview::NVResize(unsigned char *inBuf,
+ 	int fb_Ypos, fb_Upos, fb_Vpos;
+ 	int width, height;
+ 	int x_offset, y_offset;
+-	unsigned int start_timems;
+-	unsigned int end_timems;
+-	struct timeval ts_start, ts_end;
+ 
+ 	width = imgWidth > g_vinfo.xres ? g_vinfo.xres : imgWidth;
+ 	height = imgHeight > g_vinfo.yres ? g_vinfo.yres : imgHeight;
+@@ -264,15 +296,74 @@ int FbPreview::NVResize(unsigned char *inBuf,
+ 	return 0;
+ }
+ 
++int FbPreview::YUYVResize(unsigned char *inBuf,
++		unsigned char *outBuf, int imgWidth, int imgHeight)
++{
++	int rows, cols;
++	unsigned char *OutNVdata, *InNVdata;
++	int Ypos, fb_Ypos;
++	int width, height;
++	int x_offset, y_offset;
++
++	width = imgWidth > g_vinfo.xres ? g_vinfo.xres : imgWidth;
++	height = imgHeight > g_vinfo.yres ? g_vinfo.yres : imgHeight;
++	x_offset = (g_vinfo.xres - width) / 2;
++	y_offset = (g_vinfo.yres - height) / 2;
++	x_offset &= ~0x1;
++
++	InNVdata = inBuf;
++	OutNVdata = tmpBuf;
++
++	if (imgWidth == g_vinfo.xres) {
++		fb_Ypos = y_offset * g_vinfo.xres + x_offset;
++		memcpy(&tmpBuf[fb_Ypos], inBuf, imgWidth * height * 2);
++		memcpy(&outBuf[fb_Ypos], &tmpBuf[fb_Ypos], imgWidth * height * 2);
++		return 0;
++	}
++
++	/* two bytes for every pixels */
++	for(rows = 0; rows < height; rows++)
++	{
++		// g_vinfo.xres, g_vinfo.yres g_vinfo.bits_per_pixel
++		fb_Ypos = ((rows + y_offset) * g_vinfo.xres + x_offset) * 2;
++		Ypos = rows * imgWidth * 2;
++		memcpy(&OutNVdata[fb_Ypos], &InNVdata[Ypos], width * 2);
++	}
++
++	memcpy(outBuf, tmpBuf, g_screensize);
++
++	return 0;
++}
++
+ void FbPreview::Show(int fd, libcamera::Span<uint8_t> span, int width, int height, int stride)
+ {
+-	int imgsize = stride * height + stride * height / 2;
+ 	auto startTime = std::chrono::high_resolution_clock::now();
++	int size_valid = 0;
++	int imgsize;
++
++	if (pixformat == COLOR_YUV420_NV21 || pixformat == COLOR_YUV420_NV12) {
++		imgsize = stride * height + stride * height / 2;
++		if (imgsize == span.size()) {
++			size_valid = 1;
++			NVResize(span.data(), g_fb_buf, width, height);
++		}
++	} else if (pixformat == COLOR_YUV422_YVYU || pixformat == COLOR_YUV422_YUYV) {
++		imgsize = stride * height;
++		if (imgsize == span.size()) {
++			size_valid = 1;
++			YUYVResize(span.data(), g_fb_buf, width, height);
++		}
++	}
+ 
+-	if (pixformat == COLOR_YUV420_NV21 || pixformat == COLOR_YUV420_NV12)
+-		NVResize(span.data(), g_fb_buf, width, height);
+-	else
+-		std::cout << "FbPreview unsupport pixformat: " << pixformat << std::endl;
++	if (!size_valid) {
++		std::cout << "FbPreview unsupport pixformat: " << pixformat
++			<< " fb need size: " << imgsize
++			<< " width: " << width
++			<< " height: " << height
++			<< " stride: " << stride
++			<< " size: " << span.size() << std::endl;
++		throw std::runtime_error("Error FbPreview unsupport pixformat.");
++	}
+ 
+ 	auto endTime = std::chrono::high_resolution_clock::now();
+ 
+diff --git a/preview/preview.cpp b/preview/preview.cpp
+index 0086d83..17118d4 100644
+--- a/preview/preview.cpp
++++ b/preview/preview.cpp
+@@ -49,10 +49,17 @@ Preview *make_preview(Options const *options)
+ 			}
+ 			catch (std::exception const &e)
+ 			{
+-				std::cout << "FB Preview window." << std::endl;
+-				return make_fb_preview(options);
+-				// std::cout << "Preview window unavailable" << std::endl;
+-				// return make_null_preview(options);
++				try {
++					std::cout << "FB Preview window." << std::endl;
++					return make_fb_preview(options);
++					if (options->verbose)
++						std::cout << "Made FB Preview window." << std::endl;
++				}
++				catch (std::exception const &e)
++				{
++					std::cout << "Preview window unavailable" << std::endl;
++					return make_null_preview(options);
++				}
+ 			}
+ 		}
+ 	}
+-- 
+2.17.1
+

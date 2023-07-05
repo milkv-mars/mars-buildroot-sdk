@@ -1,0 +1,54 @@
+#!/bin/sh
+#
+# This script is used by ispsdk to enable the daemon script of stf_isp_ctrl.
+#
+
+DAEMON="isp_ctrl_daemon.sh"
+PIDFILE="/var/run/$DAEMON.pid"
+
+# Support sensors (imx219mipi\ov4689mipi\sc2235dvp)
+DAEMON_SENSOR_ARGS="imx219mipi"
+
+start() {
+	printf 'Starting %s: ' "$DAEMON"
+	start-stop-daemon -b -m -S -q -p "$PIDFILE" -x "/usr/bin/$DAEMON" \
+		-- start $DAEMON_SENSOR_ARGS
+	status=$?
+	if [ "$status" -eq 0 ]; then
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+	return "$status"
+}
+
+stop() {
+	/usr/bin/$DAEMON stop
+	printf 'Stopping %s: ' "$DAEMON"
+	start-stop-daemon -K -q -p "$PIDFILE"
+	status=$?
+	if [ "$status" -eq 0 ]; then
+		rm -f "$PIDFILE"
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+	return "$status"
+}
+
+restart() {
+	stop
+	sleep 1
+	start
+}
+
+case "$1" in
+	start|stop|restart)
+		"$1";;
+	reload)
+		# Restart, since there is no true "reload" feature.
+		restart;;
+	*)
+		echo "Usage: $0 {start|stop|restart|reload}"
+		exit 1
+esac

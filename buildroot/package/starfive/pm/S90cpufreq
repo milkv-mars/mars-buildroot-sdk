@@ -1,0 +1,22 @@
+#!/bin/sh
+#
+# cpufreq    This shell script to config cpufreq parameters.
+
+case "$1" in
+	start)
+		# Set the ondemand governor sampling_rate to 100ms.
+		SYS_CPUFREQ_GOVERNOR=/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+		if [ -e $SYS_CPUFREQ_GOVERNOR ]; then
+			echo "ondemand" > $SYS_CPUFREQ_GOVERNOR
+			echo 100000 > /sys/devices/system/cpu/cpufreq/ondemand/sampling_rate
+		fi
+		;;
+	stop)
+		;;
+	*)
+		echo "Usage: $0 {start|stop}"
+		exit 1
+esac
+
+exit 0
+

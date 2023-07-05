@@ -1,0 +1,271 @@
+From a24624e164f041e86d9c864a4eb83ab8c2befee4 Mon Sep 17 00:00:00 2001
+From: sw.multimedia <sw.multimedia@starfivetech.com>
+Date: Thu, 16 Dec 2021 17:46:03 +0800
+Subject: [PATCH 09/10] csi0/csi1 can be configured to the same ISP
+
+---
+ src/libcamera/pipeline/starfive/starfive.cpp | 146 +++++++++++--------
+ 1 file changed, 89 insertions(+), 57 deletions(-)
+
+diff --git a/src/libcamera/pipeline/starfive/starfive.cpp b/src/libcamera/pipeline/starfive/starfive.cpp
+index 864addfa..61a2ddc6 100644
+--- a/src/libcamera/pipeline/starfive/starfive.cpp
++++ b/src/libcamera/pipeline/starfive/starfive.cpp
+@@ -182,11 +182,11 @@ class StarFiveCameraData : public Camera::Private
+ public:
+ 	StarFiveCameraData(PipelineHandler *pipe, MediaDevice *media,
+ 			std::string entityName,
+-			std::string sensorEntityName)
++			SensorConfig sensorConfig)
+ 		: Camera::Private(pipe), media_(media)
+ 	{
+ 		LOG(STARFIVE, Debug) << __func__;
+-		sensorEntityName_ = sensorEntityName;
++		sensorConfig_ = sensorConfig;
+ 		videoEntityName_ = entityName;
+ 		if ( videoEntityName_ == "stf_vin0_isp0_video1")
+ 			ispEntityName_ = "stf_isp0";
+@@ -221,10 +221,12 @@ public:
+ 	bool haveRaw() const { return haveRaw_; }
+ 	bool rawActive() const { return rawActive_; }
+ 	void setRawActive(bool val) { rawActive_ = val; }
++	SensorConfig getSensorConfig() {return sensorConfig_; }
+ 	std::vector<SizeRange> sensorSizes() const;
+ 	std::vector<PixelFormat> sensorFormats() const;
+ 	std::vector<PixelFormat> videoFormats() const;
+ 	void paramsFilled(unsigned int id){}
++	int ispLoadFW(const char *filename);
+ 
+ 	MediaDevice *media_;
+ 	V4L2VideoDevice *video_;
+@@ -240,8 +242,8 @@ private:
+ 	bool haveRaw_;
+ 	bool rawActive_;
+ 	std::string videoEntityName_;
+-	std::string sensorEntityName_;
+ 	std::string ispEntityName_;
++	SensorConfig sensorConfig_;
+ 	std::string getRawVideoEntityName()
+ 	{
+ 		LOG(STARFIVE, Debug) << __func__;
+@@ -252,7 +254,6 @@ private:
+ 		else
+ 			return "unknow";
+ 	}
+-	int ispLoadFW(const char *filename);
+ };
+ 
+ std::vector<PixelFormat> StarFiveCameraData::videoFormats() const
+@@ -334,17 +335,12 @@ int StarFiveCameraData::init(MediaDevice *media)
+ 	int ret;
+ 
+ 	LOG(STARFIVE, Debug) << __func__;
+-	if (sensorEntityName_ != "unknow") {
+-		sensor_ =
+-		  new CameraSensor(media_->getEntityByName(sensorEntityName_));
+-		ret = sensor_->init();
+-		if (ret)
+-			return ret;
+-		LOG(STARFIVE, Debug) << "sensor id: " << sensor_->id();
+-	} else {
+-		LOG(STARFIVE, Debug) << " Can't find sensorEntityName!";
+-		return -ENODEV;
+-	}
++	sensor_ =
++	  new CameraSensor(media_->getEntityByName(sensorConfig_.sensorEntityName_));
++	ret = sensor_->init();
++	if (ret)
++		return ret;
++	LOG(STARFIVE, Debug) << "sensor id: " << sensor_->id();
+ 
+ 	if (ispEntityName_ != "unknow") {
+ 		ispSubDev_ =
+@@ -352,13 +348,6 @@ int StarFiveCameraData::init(MediaDevice *media)
+ 		LOG(STARFIVE, Debug) << "ispEntityName: " << ispEntityName_;
+ 		if (ispSubDev_->open())
+ 			return -ENODEV;
+-
+-		for (SensorConfig it : sensorConfigs) {
+-			if (it.sensorEntityName_ == sensorEntityName_) {
+-				ispLoadFW(it.sensorFwImageName_.c_str());
+-				break;
+-			}
+-		}
+ 	}
+ 
+ 	video_ = new V4L2VideoDevice(media_->getEntityByName(videoEntityName_));
+@@ -550,10 +539,20 @@ PipelineHandlerStarFive::generateConfiguration(Camera *camera,
+ 	StarFiveCameraData *data = cameraData(camera);
+ 	StarFiveCameraConfiguration *config =
+ 		new StarFiveCameraConfiguration(data);
++	SensorConfig sensorConfig = data->getSensorConfig();
+ 
+ 	if (roles.empty())
+ 		return config;
+ 
++	int ret = enableLinks(pipelineConfigs[sensorConfig.sensorType_]);
++	if (ret < 0) {
++		LOG(STARFIVE, Error)
++			<< sensorConfig.sensorEntityName_
++			<< " enableLinks failed!";
++		return config;
++	}
++	data->ispLoadFW(sensorConfig.sensorFwImageName_.c_str());
++
+ 	for (const StreamRole role : roles) {
+ 		std::map<PixelFormat, std::vector<SizeRange>> streamFormats;
+ 		unsigned int bufferCount;
+@@ -1002,9 +1001,43 @@ int PipelineHandlerStarFive::registerCameras()
+ 	unsigned int numCameras = 0;
+ 
+ 	LOG(STARFIVE, Debug) << __func__;
+-	for (unsigned int id = 0;
+-			id < STF_MAX_CAMERAS 
+-			&& numCameras < STF_MAX_CAMERAS; ++id) {
++	for (SensorConfig it : sensorConfigs) {
++		std::string cameraName;
++		int id = 0;
++
++		switch (it.sensorType_) {
++		case DVP_YUV:
++		case MIPICSI0_YUV:
++		case MIPICSI1_YUV:
++			id = 0;
++			break;
++		case DVP_ISP0:
++		case MIPICSI0_ISP0:
++		case MIPICSI1_ISP0:
++			id = 1;
++			break;
++		case DVP_ISP1:
++		case MIPICSI0_ISP1:
++		case MIPICSI1_ISP1:
++			id = 2;
++			break;
++		default:
++			continue;
++		}
++
++		MediaEntity *sensorEntity =
++			starFiveMediaDev_->getEntityByName(it.sensorEntityName_);
++		if (sensorEntity != nullptr) {
++			int ret = enableLinks(pipelineConfigs[it.sensorType_]);
++			if (ret < 0) {
++				LOG(STARFIVE, Error)
++					<< it.sensorEntityName_
++					<< " enableLinks failed!";
++				continue;
++			}
++		} else
++			continue;
++
+ 		std::string videoEntiryName;
+ 		videoEntiryName = getVideoEntityNameById(id);
+ 		if (videoEntiryName == "unknow")
+@@ -1012,12 +1045,17 @@ int PipelineHandlerStarFive::registerCameras()
+ 
+ 		std::string sensorEntityName;
+ 		sensorEntityName = findSensorEntityName(videoEntiryName);
+-		if (sensorEntityName == "unknow")
+-			continue;
++		if (sensorEntityName != it.sensorEntityName_)
++		        continue;
++
++		if (id != 0)
++			cameraName = it.sensorEntityName_ + " isp" + std::to_string(id - 1);
++		else
++			cameraName = it.sensorEntityName_ + " wr";
+ 
+ 		std::unique_ptr<StarFiveCameraData> data =
+ 			std::make_unique<StarFiveCameraData>(this, starFiveMediaDev_,
+-					videoEntiryName, sensorEntityName);
++					videoEntiryName, it);
+ 
+ 		/* Locate and open the capture video node. */
+ 		if (data->init(starFiveMediaDev_))
+@@ -1034,18 +1072,17 @@ int PipelineHandlerStarFive::registerCameras()
+ 		data->ipa_->init(IPASettings{ conf, data->sensor_->model() });
+ 
+ 		/* Create and register the camera. */
+-		LOG(STARFIVE, Debug) << "register deviceName: "
+-				     << videoEntiryName;
++		LOG(STARFIVE, Debug) << "register deviceName: " << cameraName;
+ 		if (data->haveRaw()) {
+ 			std::set<Stream *> streams{ &data->outStream_,
+ 						&data->rawStream_ };
+ 			std::shared_ptr<Camera> camera =
+-				Camera::create(std::move(data), videoEntiryName, streams);
++				Camera::create(std::move(data), cameraName, streams);
+ 			registerCamera(std::move(camera));
+ 		} else {
+ 			std::set<Stream *> streams{ &data->outStream_ };
+ 			std::shared_ptr<Camera> camera =
+-				Camera::create(std::move(data), videoEntiryName, streams);
++				Camera::create(std::move(data), cameraName, streams);
+ 			registerCamera(std::move(camera));
+ 		}
+ 		numCameras++;
+@@ -1064,9 +1101,26 @@ int PipelineHandlerStarFive::enableLinks(std::vector<PipelineConfigLink> config)
+ 		if (!link)
+ 			return -ENODEV;
+ 
+-		ret = link->setEnabled(true);
+-		if (ret < 0)
+-			return ret;
++		MediaEntity *remote = link->sink()->entity();
++		for (MediaPad *pad : remote->pads()) {
++			for (MediaLink *e : pad->links()) {
++				if (link == e)
++					continue;
++
++				if ((e->flags() & MEDIA_LNK_FL_ENABLED) &&
++				    !(e->flags() & MEDIA_LNK_FL_IMMUTABLE)) {
++					ret = e->setEnabled(false);
++					if (ret < 0)
++						return ret;
++				}
++			}
++		}
++
++		if (!(link->flags() & MEDIA_LNK_FL_ENABLED)) {
++			ret = link->setEnabled(true);
++			if (ret < 0)
++				return ret;
++		}
+ 	}
+ 
+ 	return ret;
+@@ -1136,30 +1190,8 @@ bool PipelineHandlerStarFive::match(DeviceEnumerator *enumerator)
+ 	if (!starFiveMediaDev_)
+ 		return false;
+ 
+-	if (starFiveMediaDev_->disableLinks())
+-		return false;
+-
+ 	parserPipelineConfig(PIPELINE_CONFIG_FILENAME);
+ 
+-	for (SensorConfig it : sensorConfigs) {
+-		MediaEntity *sensorEntity =
+-			starFiveMediaDev_->getEntityByName(it.sensorEntityName_);
+-		int ret;
+-
+-		if (sensorEntity != nullptr) {
+-			if (it.sensorType_ < DVP_YUV
+-				|| it.sensorType_ >= SENSORTYPE_MAX)
+-				continue;
+-			ret = enableLinks(pipelineConfigs[it.sensorType_]);
+-			if (ret < 0) {
+-				LOG(STARFIVE, Error)
+-					<< it.sensorEntityName_
+-					<< " enableLinks failed!";
+-				continue;
+-			}
+-		}
+-	}
+-
+ 	numCameras = registerCameras();
+ 	if (numCameras)
+ 		LOG(STARFIVE, Debug)
+-- 
+2.25.1
+

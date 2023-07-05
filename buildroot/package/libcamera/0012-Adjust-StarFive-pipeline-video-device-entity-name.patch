@@ -1,0 +1,63 @@
+From 6d4c962f44084b0e01ec49d37818fcdd10e9c01d Mon Sep 17 00:00:00 2001
+From: "Kevin.xie" <kevin.xie@starfivetech.com>
+Date: Wed, 8 Jun 2022 14:38:08 +0800
+Subject: [PATCH] Adjust StarFive pipeline video device entity name
+
+Signed-off-by: Kevin.xie <kevin.xie@starfivetech.com>
+---
+ src/libcamera/pipeline/starfive/starfive.cpp | 16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/src/libcamera/pipeline/starfive/starfive.cpp b/src/libcamera/pipeline/starfive/starfive.cpp
+index 7f02baf..03f0949 100755
+--- a/src/libcamera/pipeline/starfive/starfive.cpp
++++ b/src/libcamera/pipeline/starfive/starfive.cpp
+@@ -199,7 +199,7 @@ public:
+ 		videoEntityName_ = entityName;
+ 		if ( videoEntityName_ == "stf_vin0_isp0_video1")
+ 			ispEntityName_ = "stf_isp0";
+-		else if (videoEntityName_ == "stf_vin0_isp1_video2")
++		else if (videoEntityName_ == "stf_vin0_isp1_video8")
+ 			ispEntityName_ = "stf_isp1";
+ 		else
+ 			ispEntityName_ = "unknow";
+@@ -258,9 +258,9 @@ private:
+ 	{
+ 		LOG(STARFIVE, Debug) << __func__;
+ 		if ( videoEntityName_ == "stf_vin0_isp0_video1")
+-			return "stf_vin0_isp0_raw_video11";
+-		else if (videoEntityName_ == "stf_vin0_isp1_video2")
+-			return "stf_vin0_isp1_raw_video12";
++			return "stf_vin0_isp0_raw_video6";
++		else if (videoEntityName_ == "stf_vin0_isp1_video8")
++			return "stf_vin0_isp1_raw_video13";
+ 		else
+ 			return "unknow";
+ 	}
+@@ -983,11 +983,11 @@ std::string PipelineHandlerStarFive::getVideoEntityNameById(unsigned int id)
+ 	case 1:
+ 		return "stf_vin0_isp0_video1";
+ 	case 2:
+-		return "stf_vin0_isp1_video2";
++		return "stf_vin0_isp1_video8";
+ 	case 3:
+-		return "stf_vin0_isp0_raw_video11";
++		return "stf_vin0_isp0_raw_video6";
+ 	case 4:
+-		return "stf_vin0_isp1_raw_video12";
++		return "stf_vin0_isp1_raw_video13";
+ 	default:
+ 		return "unknow";
+ 	}
+@@ -1255,7 +1255,7 @@ bool PipelineHandlerStarFive::match(DeviceEnumerator *enumerator)
+ 	DeviceMatch dm("stf-vin");
+ 	dm.add("stf_vin0_wr_video0");
+ 	dm.add("stf_vin0_isp0_video1");
+-	dm.add("stf_vin0_isp1_video2");
++	dm.add("stf_vin0_isp1_video8");
+ 
+ 	LOG(STARFIVE, Debug) << __func__;
+ 	starFiveMediaDev_ = acquireMediaDevice(enumerator, dm);
+-- 
+2.17.1
+

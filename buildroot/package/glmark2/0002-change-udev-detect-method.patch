@@ -1,0 +1,244 @@
+Change udev detect mothod.
+
+Signed-off-by: Windsome Zeng <windsome.zeng@starfivetech.com>
+
+diff -purN a/src/native-state-drm.cpp b/src/native-state-drm.cpp
+--- a/src/native-state-drm.cpp	2022-08-11 16:49:38.274490554 +0800
++++ b/src/native-state-drm.cpp	2022-08-11 16:48:41.759513413 +0800
+@@ -29,6 +29,7 @@
+ #include <libudev.h>
+ #include <cstring>
+ #include <string>
++#include <unistd.h>
+ 
+ /******************
+  * Public methods *
+@@ -157,180 +158,72 @@ inline static bool invalid_drm_node_path
+     return !(valid_drm_node_path(provided_node_path));
+ }
+ 
+-/* Udev methods */
+-// Udev detection functions
+-#define UDEV_TEST_FUNC_SIGNATURE(udev_identifier, device_identifier, syspath_identifier) \
+-    struct udev * __restrict const udev_identifier, \
+-    struct udev_device * __restrict const device_identifier, \
+-    char const * __restrict syspath_identifier
+-
+-/* Omitting the parameter names is kind of ugly but is the only way
+- * to force G++ to forget about the unused parameters.
+- * Having big warnings during the compilation isn't very nice.
+- *
+- * These functions will be used as function pointers and should have
+- * the same signature to avoid weird stack related issues.
+- *
+- * Another way to deal with that issue will be to mark unused parameters
+- * with __attribute__((unused))
+- */
+-static bool udev_drm_test_virtual(
+-    UDEV_TEST_FUNC_SIGNATURE(,,tested_node_syspath))
+-{
+-    return strstr(tested_node_syspath, "virtual") != NULL;
+-}
+-
+-static bool udev_drm_test_not_virtual(
+-    UDEV_TEST_FUNC_SIGNATURE(udev, current_device, tested_node_syspath))
+-{
+-    return !udev_drm_test_virtual(udev,
+-                                  current_device,
+-                                  tested_node_syspath);
+-}
+-
+ static bool
+-udev_drm_test_primary_gpu(UDEV_TEST_FUNC_SIGNATURE(, current_device,))
+-{
+-    bool is_main_gpu = false;
+-
+-    auto const drm_node_parent = udev_device_get_parent(current_device);
+-
+-    /* While tempting, using udev_device_unref will generate issues
+-     * when unreferencing the child in udev_get_node_that_pass_in_enum
+-     *
+-     * udev_device_unref WILL unreference the parent, so avoid doing
+-     * that here.
+-     *
+-     * ( See udev sources : src/libudev/libudev-device.c )
+-     */
+-    if (drm_node_parent != NULL) {
+-        is_main_gpu =
+-            (udev_device_get_sysattr_value(drm_node_parent, "boot_vga")
+-             != NULL);
+-    }
+-
+-    return is_main_gpu;
+-}
+-
+-/* Test if the drm-device is actually modeset capable.
+- * Render-only devices cannot drive an actual display,
+- * so the GETRESOURCES ioctl will fail in that case.
+- */
+-static bool udev_drm_test_modeset(std::string const& dev_path)
+-{
+-    struct drm_mode_card_res res {};
+-    int fd, ret;
+-
+-    fd = open(dev_path.c_str(), O_RDWR);
+-    if (!valid_fd(fd))
+-        return false;
+-
+-    ret = drmIoctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &res);
+-    drmClose(fd);
+-
+-    return !ret;
+-}
+-
+-static std::string
+-udev_get_node_that_pass_in_enum(
+-    struct udev * __restrict const udev,
+-    struct udev_enumerate * __restrict const dev_enum,
+-    bool (* check_function)(UDEV_TEST_FUNC_SIGNATURE(,,)))
++drm_device_is_kms(struct udev_device *device)
+ {
+-    std::string result;
++    const char *filename = NULL;
++    drmModeRes *res = NULL;
++    int fd = -1;
++    bool ret = false;
+ 
+-    auto current_element = udev_enumerate_get_list_entry(dev_enum);
++    if (!device) 
++        goto out_fail;
+ 
+-    while (current_element && result.empty()) {
+-        char const * __restrict current_element_sys_path =
+-            udev_list_entry_get_name(current_element);
++    filename = udev_device_get_devnode(device);
++    if (!filename)
++        goto out_fail;
+ 
+-        if (current_element_sys_path) {
+-            struct udev_device * current_device =
+-                udev_device_new_from_syspath(udev,
+-                                             current_element_sys_path);
+-            auto check_passed = check_function(
+-                udev, current_device, current_element_sys_path);
++    fd = open(filename, O_RDWR);
++    if (fd < 0)
++        goto out_fail;
+ 
+-            if (check_passed) {
+-                const char * device_node_path =
+-                    udev_device_get_devnode(current_device);
++    res = drmModeGetResources(fd);
++    if (!res)
++        goto out_fail;
+ 
+-                if (device_node_path &&
+-                    udev_drm_test_modeset(device_node_path)) {
+-                        result = device_node_path;
+-                }
++    if (res->count_crtcs <= 0 || res->count_connectors <= 0 ||
++        res->count_encoders <= 0)
++            goto out_fail;
+ 
+-            }
++    ret = true;
+ 
+-            udev_device_unref(current_device);
+-        }
+-
+-        current_element = udev_list_entry_get_next(current_element);
+-    }
++out_fail:
++    if (res)
++        drmModeFreeResources(res);
++    if (fd >= 0)
++        close(fd);
+ 
+-    return result;
++    return ret;
+ }
+ 
+-/* Inspired by KWin detection mechanism */
+-/* And yet KWin got it wrong too, it seems.
+- * 1 - Looking for the primary GPU by checking the flag 'boot_vga'
+- *     won't get you far with some embedded chipsets, like Rockchip.
+- * 2 - Looking for a GPU plugged in PCI will fail on various embedded
+- *     devices !
+- * 3 - Looking for a render node is not guaranteed to work on some
+- *     poorly maintained DRM drivers, which plague some embedded
+- *     devices too...
+- *
+- * So, we won't play too smart here.
+- * - We first check for a primary GPU plugged in PCI with the 'boot_vga'
+- *   attribute, to take care of Desktop users using multiple GPU.
+- * - Then, we just check for a DRM node that is not virtual
+- * - At least, we use the first virtual node we get, if we didn't find
+- *   anything yet.
+- * This should take care of almost every potential use case.
+- *
+- * The remaining ones will be dealt with an additional option to
+- * specify the DRM dev node manually.
+- */
++/* Inspired by Wayland's Weston detection mechanism */
+ static std::string udev_main_gpu_drm_node_path()
+ {
+-    Log::debug("Using Udev to detect the right DRM node to use\n");
+     auto udev = udev_new();
+-    auto dev_enumeration = udev_enumerate_new(udev);
+-
+-    udev_enumerate_add_match_subsystem(dev_enumeration, "drm");
+-    udev_enumerate_add_match_sysname(dev_enumeration, "card[0-9]*");
+-    udev_enumerate_scan_devices(dev_enumeration);
+-
+-    Log::debug("Looking for the main GPU DRM node...\n");
+-    std::string node_path = udev_get_node_that_pass_in_enum(
+-        udev, dev_enumeration, udev_drm_test_primary_gpu);
+-
+-    if (invalid_drm_node_path(node_path)) {
+-        Log::debug("Not found!\n");
+-        Log::debug("Looking for a concrete GPU DRM node...\n");
+-        node_path = udev_get_node_that_pass_in_enum(
+-            udev, dev_enumeration, udev_drm_test_not_virtual);
+-    }
+-    if (invalid_drm_node_path(node_path)) {
+-        Log::debug("Not found!?\n");
+-        Log::debug("Looking for a virtual GPU DRM node...\n");
+-        node_path = udev_get_node_that_pass_in_enum(
+-            udev, dev_enumeration, udev_drm_test_virtual);
+-    }
+-    if (invalid_drm_node_path(node_path)) {
+-        Log::debug("Not found.\n");
+-        Log::debug("Cannot find a single DRM node using UDEV...\n");
++    struct udev_enumerate *e;
++    struct udev_list_entry *entry;
++    const char *path;
++    struct udev_device *device;
++    std::string node_path;
++
++    e = udev_enumerate_new(udev);
++    udev_enumerate_add_match_subsystem(e, "drm");
++    udev_enumerate_add_match_sysname(e, "card[0-9]*");
++
++    udev_enumerate_scan_devices(e);
++    udev_list_entry_foreach(entry, udev_enumerate_get_list_entry(e)) {
++        path = udev_list_entry_get_name(entry);
++        device = udev_device_new_from_syspath(udev, path);
++        if (drm_device_is_kms(device))
++            node_path = udev_device_get_devnode(device);
++
++        udev_device_unref(device);
++        if (!node_path.empty())
++            break;
+     }
+ 
+-    if (valid_drm_node_path(node_path)) {
+-        Log::debug("Success!\n");
+-    }
+-
+-    udev_enumerate_unref(dev_enumeration);
++    udev_enumerate_unref(e);
+     udev_unref(udev);
+-
+     return node_path;
+ }
+ 

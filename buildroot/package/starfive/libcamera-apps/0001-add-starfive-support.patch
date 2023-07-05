@@ -1,0 +1,489 @@
+From 6abadc7414f0fdfea160374326cea32bd2b40d7d Mon Sep 17 00:00:00 2001
+From: sw.multimedia <sw.multimedia@starfivetech.com>
+Date: Fri, 15 Oct 2021 10:55:01 +0800
+Subject: [PATCH] add starfive support
+
+---
+ CMakeLists.txt         |   2 +-
+ core/CMakeLists.txt    |   2 +-
+ core/libcamera_app.cpp |  38 ++++--
+ core/options.hpp       |   3 +
+ preview/CMakeLists.txt |   9 ++
+ preview/fb_preview.cpp | 289 +++++++++++++++++++++++++++++++++++++++++
+ preview/preview.cpp    |   7 +-
+ 7 files changed, 338 insertions(+), 12 deletions(-)
+ create mode 100644 preview/fb_preview.cpp
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 2293211..253ec8d 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -12,7 +12,7 @@ endif()
+ set (CMAKE_EXPORT_COMPILE_COMMANDS ON)
+ set (CMAKE_CXX_STANDARD 17)
+ set (CMAKE_CXX_FLAGS "-Wall -Wextra -pedantic -Wno-unused-parameter -faligned-new")
+-add_definitions(-Werror)
++# add_definitions(-Werror)
+ add_definitions(-Wfatal-errors)
+ add_definitions(-D_FILE_OFFSET_BITS=64)
+ 
+diff --git a/core/CMakeLists.txt b/core/CMakeLists.txt
+index 1618541..84316b2 100644
+--- a/core/CMakeLists.txt
++++ b/core/CMakeLists.txt
+@@ -11,6 +11,6 @@ add_library(libcamera_app libcamera_app.cpp post_processor.cpp version.cpp)
+ add_dependencies(libcamera_app VersionCpp)
+ 
+ set_target_properties(libcamera_app PROPERTIES PREFIX "" IMPORT_PREFIX "")
+-target_link_libraries(libcamera_app pthread preview ${LIBCAMERA_LINK_LIBRARIES} ${Boost_LIBRARIES} post_processing_stages)
++target_link_libraries(libcamera_app pthread preview ${LIBCAMERA_LIBRARIES} ${Boost_LIBRARIES} post_processing_stages)
+ 
+ install(TARGETS libcamera_app LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+diff --git a/core/libcamera_app.cpp b/core/libcamera_app.cpp
+index 7d4e28f..3c4d862 100644
+--- a/core/libcamera_app.cpp
++++ b/core/libcamera_app.cpp
+@@ -134,7 +134,12 @@ void LibcameraApp::ConfigureViewfinder()
+ 	}
+ 
+ 	// Now we get to override any of the default settings from the options_->
+-	configuration_->at(0).pixelFormat = libcamera::formats::YUV420;
++	std::cout << "viewfinder pixelformat: " << options_->pixelformat << std::endl;
++	if (options_->pixelformat.length())
++		configuration_->at(0).pixelFormat =
++			libcamera::PixelFormat::fromString(options_->pixelformat);
++	else
++		configuration_->at(0).pixelFormat = libcamera::formats::YUV420;
+ 	configuration_->at(0).size = size;
+ 
+ 	if (have_lores_stream)
+@@ -143,7 +148,11 @@ void LibcameraApp::ConfigureViewfinder()
+ 		lores_size.alignDownTo(2, 2);
+ 		if (lores_size.width > size.width || lores_size.height > size.height)
+ 			throw std::runtime_error("Low res image larger than viewfinder");
+-		configuration_->at(1).pixelFormat = libcamera::formats::YUV420;
++		if (options_->pixelformat.length())
++			configuration_->at(0).pixelFormat =
++				libcamera::PixelFormat::fromString(options_->pixelformat);
++		else
++			configuration_->at(1).pixelFormat = libcamera::formats::YUV420;
+ 		configuration_->at(1).size = lores_size;
+ 		configuration_->at(1).bufferCount = configuration_->at(0).bufferCount;
+ 	}
+@@ -186,8 +195,13 @@ void LibcameraApp::ConfigureStill(unsigned int flags)
+ 		configuration_->at(0).pixelFormat = libcamera::formats::BGR888;
+ 	else if (flags & FLAG_STILL_RGB)
+ 		configuration_->at(0).pixelFormat = libcamera::formats::RGB888;
+-	else
+-		configuration_->at(0).pixelFormat = libcamera::formats::YUV420;
++	else {
++		if (options_->pixelformat.length())
++			configuration_->at(0).pixelFormat =
++				libcamera::PixelFormat::fromString(options_->pixelformat);
++		else
++			configuration_->at(0).pixelFormat = libcamera::formats::YUV420;
++	}
+ 	if ((flags & FLAG_STILL_BUFFER_MASK) == FLAG_STILL_DOUBLE_BUFFER)
+ 		configuration_->at(0).bufferCount = 2;
+ 	else if ((flags & FLAG_STILL_BUFFER_MASK) == FLAG_STILL_TRIPLE_BUFFER)
+@@ -241,7 +255,11 @@ void LibcameraApp::ConfigureVideo(unsigned int flags)
+ 		throw std::runtime_error("failed to generate video configuration");
+ 
+ 	// Now we get to override any of the default settings from the options_->
+-	configuration_->at(0).pixelFormat = libcamera::formats::YUV420;
++	if (options_->pixelformat.length())
++		configuration_->at(0).pixelFormat =
++			libcamera::PixelFormat::fromString(options_->pixelformat);
++	else
++		configuration_->at(0).pixelFormat = libcamera::formats::YUV420;
+ 	configuration_->at(0).bufferCount = 6; // 6 buffers is better than 4
+ 	if (options_->width)
+ 		configuration_->at(0).size.width = options_->width;
+@@ -267,7 +285,11 @@ void LibcameraApp::ConfigureVideo(unsigned int flags)
+ 		if (lores_size.width > configuration_->at(0).size.width ||
+ 			lores_size.height > configuration_->at(0).size.height)
+ 			throw std::runtime_error("Low res image larger than video");
+-		configuration_->at(lores_index).pixelFormat = libcamera::formats::YUV420;
++		if (options_->pixelformat.length())
++			configuration_->at(0).pixelFormat =
++				libcamera::PixelFormat::fromString(options_->pixelformat);
++		else
++			configuration_->at(lores_index).pixelFormat = libcamera::formats::YUV420;
+ 		configuration_->at(lores_index).size = lores_size;
+ 		configuration_->at(lores_index).bufferCount = configuration_->at(0).bufferCount;
+ 	}
+@@ -713,8 +735,8 @@ void LibcameraApp::previewThread()
+ 				preview_cond_var_.wait(lock);
+ 		}
+ 
+-		if (item.stream->configuration().pixelFormat != libcamera::formats::YUV420)
+-			throw std::runtime_error("Preview windows only support YUV420");
++		// if (item.stream->configuration().pixelFormat != libcamera::formats::YUV420)
++		// 	throw std::runtime_error("Preview windows only support YUV420");
+ 
+ 		unsigned int w, h, stride;
+ 		StreamDimensions(item.stream, &w, &h, &stride);
+diff --git a/core/options.hpp b/core/options.hpp
+index 447983f..5c68088 100644
+--- a/core/options.hpp
++++ b/core/options.hpp
+@@ -43,6 +43,8 @@ struct Options
+ 			 "Set the output image width (0 = use default value)")
+ 			("height", value<unsigned int>(&height)->default_value(0),
+ 			 "Set the output image height (0 = use default value)")
++			("pixelformat", value<std::string>(&pixelformat),
++			 "Set the pixelformat name")
+ 			("timeout,t", value<uint64_t>(&timeout)->default_value(5000),
+ 			 "Time (in ms) for which program runs")
+ 			("output,o", value<std::string>(&output),
+@@ -119,6 +121,7 @@ struct Options
+ 	std::string post_process_file;
+ 	unsigned int width;
+ 	unsigned int height;
++	std::string pixelformat;
+ 	bool rawfull;
+ 	bool nopreview;
+ 	std::string preview;
+diff --git a/preview/CMakeLists.txt b/preview/CMakeLists.txt
+index 1a7481f..a772e14 100644
+--- a/preview/CMakeLists.txt
++++ b/preview/CMakeLists.txt
+@@ -63,6 +63,15 @@ else()
+     message(STATUS "QT display mode will be unavailable!")
+ endif()
+ 
++set(ENABLE_FB 1)
++if (ENABLE_FB)
++    set(SRC ${SRC} fb_preview.cpp)
++    set(FB_FOUND 1)
++    message(STATUS "FB display mode enabled")
++else()
++    message(STATUS "FB display mode will be unavailable!")
++endif()
++
+ add_library(preview null_preview.cpp ${SRC})
+ target_link_libraries(preview ${TARGET_LIBS})
+ 
+diff --git a/preview/fb_preview.cpp b/preview/fb_preview.cpp
+new file mode 100644
+index 0000000..1a88b79
+--- /dev/null
++++ b/preview/fb_preview.cpp
+@@ -0,0 +1,289 @@
++/* SPDX-License-Identifier: BSD-2-Clause */
++/*
++ * Copyright (C) 2021, Raspberry Pi (Trading) Ltd.
++ *
++ * null_preview.cpp - dummy "show nothing" preview window.
++ */
++
++#include <iostream>
++#include <sys/mman.h>
++#include <stdio.h>
++#include <unistd.h>
++#include <errno.h>
++#include <malloc.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <fcntl.h>
++#include <sys/ioctl.h>
++#include <linux/fb.h>
++#include <string.h>
++#include <malloc.h>
++#include <linux/videodev2.h>
++#include <libcamera/formats.h>
++#include <chrono>
++
++#include "core/options.hpp"
++
++#include "preview.hpp"
++
++#define FBIOPAN_GET_PP_MODE        0x4609
++#define FBIOPAN_SET_PP_MODE        0x460a
++
++enum COLOR_FORMAT {
++	COLOR_YUV422_UYVY = 0,  // 00={Y1,V0,Y0,U0}
++	COLOR_YUV422_VYUY = 1,  // 01={Y1,U0,Y0,V0}
++	COLOR_YUV422_YUYV = 2,  // 10={V0,Y1,U0,Y0}
++	COLOR_YUV422_YVYU = 3,  // 11={U0,Y1,V0,Y0}
++
++	COLOR_YUV420P,          // 4
++	COLOR_YUV420_NV21,      // 5
++	COLOR_YUV420_NV12,      // 6
++
++	COLOR_RGB888_ARGB,      // 7
++	COLOR_RGB888_ABGR,      // 8
++	COLOR_RGB888_RGBA,      // 9
++	COLOR_RGB888_BGRA,      // 10
++	COLOR_RGB565,           // 11
++};
++
++struct pp_video_mode {
++	enum COLOR_FORMAT format;
++	unsigned int height;
++	unsigned int width;
++	unsigned int addr;
++};
++
++struct pp_mode {
++	char pp_id;
++	bool bus_out;        /*out to ddr*/
++	bool fifo_out;        /*out to lcdc*/
++	bool inited;
++	struct pp_video_mode src;
++	struct pp_video_mode dst;
++};
++
++class FbPreview : public Preview
++{
++public:
++	FbPreview(Options const *options);
++	~FbPreview();
++	void SetInfoText(const std::string &text) override 
++	{ 
++		std::cout << "Camera fps: " << text << std::endl;
++	}
++	// Display the buffer. You get given the fd back in the BufferDoneCallback
++	// once its available for re-use.
++	virtual void Show(int fd, libcamera::Span<uint8_t> span, int width, int height, int stride) override;
++	// Reset the preview window, clearing the current buffers and being ready to
++	// show new ones.
++	void Reset() override {}
++	// Return the maximum image size allowed. Zeroes mean "no limit".
++	virtual void MaxImageSize(unsigned int &w, unsigned int &h) const override { w = h = 0; }
++
++private:
++	int NVResize(unsigned char *inBuf,
++		unsigned char *outBuf, int imgWidth, int imgHeight);
++	int g_fb_fd;
++	int g_stfbc_fd;
++	struct fb_var_screeninfo g_vinfo;
++	struct fb_fix_screeninfo g_finfo;
++	unsigned char *g_fb_buf;
++	unsigned char *tmpBuf;
++	unsigned int g_screensize;
++	enum COLOR_FORMAT pixformat;
++};
++
++static enum COLOR_FORMAT v4l2fmt_to_fbfmt(unsigned int format)
++{
++	enum COLOR_FORMAT pixformat = COLOR_RGB565;
++
++	switch (format) {
++	case V4L2_PIX_FMT_RGB565:
++		pixformat = COLOR_RGB565;
++		break;
++	case V4L2_PIX_FMT_RGB24:
++		pixformat = COLOR_RGB888_ARGB;
++		break;
++	case V4L2_PIX_FMT_YUV420:
++		pixformat = COLOR_YUV420P;
++		break;
++	case V4L2_PIX_FMT_YUYV:
++		pixformat = COLOR_YUV422_YUYV;
++		break;
++	case V4L2_PIX_FMT_NV21:
++		pixformat = COLOR_YUV420_NV21;
++		break;
++	case V4L2_PIX_FMT_NV12:
++		pixformat = COLOR_YUV420_NV12;
++		break;
++	case V4L2_PIX_FMT_YVYU:
++		pixformat = COLOR_YUV422_YVYU;
++		break;
++	default:
++		pixformat = COLOR_RGB565;
++		break;
++	}
++
++	return pixformat;
++}
++
++FbPreview::FbPreview(Options const *options) : Preview(options)
++{
++	g_fb_fd = open("/dev/fb0", O_RDWR);
++	if (g_fb_fd == -1)
++		throw std::runtime_error("Couldn't open fb display");
++	g_stfbc_fd = open("/dev/stfbcdev", O_RDWR);
++	if (g_stfbc_fd == -1)
++		throw std::runtime_error("Couldn't open stfbcdev display");
++
++	struct pp_mode pp_info[3];
++	libcamera::PixelFormat pixelFormat =
++		libcamera::PixelFormat::fromString(options_->pixelformat);
++
++	if (pixelFormat.fourcc() != V4L2_PIX_FMT_NV12)
++		throw std::runtime_error("FB onlu support NV12 display");
++
++	pixformat = v4l2fmt_to_fbfmt(pixelFormat.fourcc());
++	if (-1 == ioctl(g_stfbc_fd, FBIOPAN_GET_PP_MODE, &pp_info[0]))
++		throw std::runtime_error("Error reading variable information.");
++
++	std::cout << "get pp format : "
++		<< pp_info[1].src.format
++		<< std::endl;
++	
++	pp_info[1].src.format = pixformat;
++	
++	if (-1 == ioctl(g_stfbc_fd, FBIOPAN_SET_PP_MODE, &pp_info[0]))
++		throw std::runtime_error("Error reading variable information.");
++	
++	if (-1 == ioctl(g_stfbc_fd, FBIOPAN_GET_PP_MODE, &pp_info[0]))
++		throw std::runtime_error("Error reading variable information.");
++
++	std::cout << "get pp format : "
++		<< pp_info[1].src.format
++		<< std::endl;
++
++	pixformat = pp_info[1].src.format;
++	
++	// Get fixed screen information
++	if (-1 == ioctl(g_fb_fd, FBIOGET_FSCREENINFO, &g_finfo))
++		throw std::runtime_error("Error reading fixed information.");
++	
++	// Get variable screen information
++	if (-1 == ioctl(g_fb_fd, FBIOGET_VSCREENINFO, &g_vinfo))
++		throw std::runtime_error("Error reading variable information.");
++	
++	std::cout << "g_vinfo.xres = " << g_vinfo.xres
++		<< ", g_vinfo.yres = " << g_vinfo.yres
++		<< ", grayscale = " << g_vinfo.grayscale
++		<< std::endl;
++	std::cout << "g_vinfo.xoffset = " << g_vinfo.xoffset
++		<< ", g_vinfo.yoffset = " << g_vinfo.yoffset
++		<< std::endl;
++	std::cout << "g_vinfo.bits_per_pixel = " << g_vinfo.bits_per_pixel
++		<< ", g_finfo.line_length = " << g_finfo.line_length
++		<< std::endl;
++	
++	g_screensize = g_vinfo.xres * g_vinfo.yres * g_vinfo.bits_per_pixel / 8;
++	g_fb_buf = (unsigned char *)mmap(NULL, g_screensize, PROT_READ | PROT_WRITE, MAP_SHARED, g_fb_fd, 0);
++	if (g_fb_buf == (void *)(-1))
++		throw std::runtime_error("Error: failed to map framebuffer device to memory.");
++
++	memset(g_fb_buf, 0x00, g_screensize);
++	tmpBuf = static_cast<unsigned char *>(malloc(g_screensize));
++	if (!tmpBuf)
++		throw std::runtime_error("Error: failed to malloc memory.");
++	memset(tmpBuf, 0x00, g_screensize);
++
++	if (options->verbose)
++		std::cout << "Running fb preview window" << std::endl;
++}
++
++FbPreview::~FbPreview()
++{
++	free(tmpBuf);
++	munmap((void *)g_fb_buf, g_screensize);
++	close(g_fb_fd);
++	close(g_stfbc_fd);
++	std::cout << "fb preview window ~FbPreview" << std::endl;
++}
++
++int FbPreview::NVResize(unsigned char *inBuf,
++		unsigned char *outBuf, int imgWidth, int imgHeight)
++{
++	int rows, cols;
++	unsigned char *OutNVdata, *InNVdata;
++	int Ypos, Upos, Vpos;
++	int fb_Ypos, fb_Upos, fb_Vpos;
++	int width, height;
++	int x_offset, y_offset;
++	unsigned int start_timems;
++	unsigned int end_timems;
++	struct timeval ts_start, ts_end;
++
++	width = imgWidth > g_vinfo.xres ? g_vinfo.xres : imgWidth;
++	height = imgHeight > g_vinfo.yres ? g_vinfo.yres : imgHeight;
++	x_offset = (g_vinfo.xres - width) / 2;
++	y_offset = (g_vinfo.yres - height) / 2;
++
++	InNVdata = inBuf;
++	OutNVdata = tmpBuf;
++
++	if (imgWidth == g_vinfo.xres) {
++		fb_Ypos = y_offset * g_vinfo.xres + x_offset;
++		fb_Upos = (y_offset / 2 * g_vinfo.xres / 2 + x_offset / 2) * 2;
++		fb_Upos = g_vinfo.xres * g_vinfo.yres + fb_Upos;
++		Upos = imgWidth * imgHeight;
++		memcpy(&tmpBuf[fb_Ypos], inBuf, imgWidth * height);
++		memcpy(&tmpBuf[fb_Upos], &inBuf[Upos], imgWidth * height / 2);
++		memcpy(&outBuf[fb_Ypos], &tmpBuf[fb_Ypos], imgWidth * height * 2);
++		memcpy(&outBuf[fb_Upos], &tmpBuf[fb_Upos], imgWidth * height / 2);
++		return 0;
++	}
++
++	/* two bytes for every pixels */
++	for(rows = 0; rows < height; rows+=2)
++	{
++		// g_vinfo.xres, g_vinfo.yres g_vinfo.bits_per_pixel
++		fb_Ypos = ((rows + y_offset) * g_vinfo.xres + x_offset);
++		fb_Upos = ((rows + y_offset) / 2 * g_vinfo.xres / 2 + x_offset / 2) * 2;
++		fb_Upos = g_vinfo.xres * g_vinfo.yres + fb_Upos;
++		fb_Vpos = fb_Upos + 1;
++
++		Ypos = rows * imgWidth;
++		Upos = imgWidth * imgHeight + Ypos / 2;
++		Vpos = Upos + 1;
++		memcpy(&OutNVdata[fb_Ypos], &InNVdata[Ypos], width);
++		memcpy(&OutNVdata[fb_Ypos+g_vinfo.xres], &InNVdata[Ypos+imgWidth], width);
++
++		memcpy(&OutNVdata[fb_Upos], &InNVdata[Upos], width);
++	}
++
++	memcpy(outBuf, tmpBuf, g_screensize);
++
++	return 0;
++}
++
++void FbPreview::Show(int fd, libcamera::Span<uint8_t> span, int width, int height, int stride)
++{
++	int imgsize = stride * height + stride * height / 2;
++	auto startTime = std::chrono::high_resolution_clock::now();
++
++	if (pixformat == COLOR_YUV420_NV21 || pixformat == COLOR_YUV420_NV12)
++		NVResize(span.data(), g_fb_buf, width, height);
++	else
++		std::cout << "FbPreview unsupport pixformat: " << pixformat << std::endl;
++
++	auto endTime = std::chrono::high_resolution_clock::now();
++
++	std::chrono::duration<double,std::ratio<1,1000000>> duration_mcs =
++		std::chrono::duration_cast<std::chrono::duration<double,std::ratio<1,1000000>>>(endTime-startTime);
++	std::cout << "FbPreview copy fps " << 1000000 / duration_mcs.count() << "." << std::endl;
++
++	done_callback_(fd);
++}
++
++Preview *make_fb_preview(Options const *options)
++{
++	return new FbPreview(options);
++}
+diff --git a/preview/preview.cpp b/preview/preview.cpp
+index 68d193a..0086d83 100644
+--- a/preview/preview.cpp
++++ b/preview/preview.cpp
+@@ -13,6 +13,7 @@ Preview *make_null_preview(Options const *options);
+ Preview *make_egl_preview(Options const *options);
+ Preview *make_drm_preview(Options const *options);
+ Preview *make_qt_preview(Options const *options);
++Preview *make_fb_preview(Options const *options);
+ 
+ Preview *make_preview(Options const *options)
+ {
+@@ -48,8 +49,10 @@ Preview *make_preview(Options const *options)
+ 			}
+ 			catch (std::exception const &e)
+ 			{
+-				std::cout << "Preview window unavailable" << std::endl;
+-				return make_null_preview(options);
++				std::cout << "FB Preview window." << std::endl;
++				return make_fb_preview(options);
++				// std::cout << "Preview window unavailable" << std::endl;
++				// return make_null_preview(options);
+ 			}
+ 		}
+ 	}
+-- 
+2.17.1
+

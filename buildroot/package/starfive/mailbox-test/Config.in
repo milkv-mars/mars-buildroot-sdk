@@ -1,0 +1,4 @@
+config BR2_PACKAGE_MAILBOX_TEST
+	bool "mailbox-test"
+	help
+	  mailbox-test package

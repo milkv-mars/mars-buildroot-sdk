@@ -1,0 +1,2 @@
+IMG_GPU/out/*.tar.gz filter=lfs diff=lfs merge=lfs -text
+ispsdk/DDKSource/libispsdk/*.a filter=lfs diff=lfs merge=lfs -text

@@ -1,0 +1,7 @@
+comment "sf openmax il package"
+
+config BR2_PACKAGE_SF_OMX_IL
+	bool "sf-omx-il"
+	depends on BR2_PACKAGE_WAVE511 && (BR2_PACKAGE_WAVE420L || BR2_PACKAGE_WAVE521) && BR2_PACKAGE_CODAJ12
+	help
+	  sf-omx-il package

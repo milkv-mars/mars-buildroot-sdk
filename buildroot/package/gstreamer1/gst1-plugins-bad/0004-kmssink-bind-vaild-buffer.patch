@@ -1,0 +1,88 @@
+kmssink plugin bind vaild buffer when enable drm pipeline.
+
+Signed-off-by: Leo Lu <leo.lu@starfivetech.com>
+
+diff -pruN a/sys/kms/gstkmssink.c b/sys/kms/gstkmssink.c
+--- a/sys/kms/gstkmssink.c	2023-05-08 11:08:39.273491472 +0800
++++ b/sys/kms/gstkmssink.c	2023-05-08 10:56:22.825058287 +0800
+@@ -426,14 +426,13 @@ ensure_kms_allocator (GstKMSSink * self)
+ }
+ 
+ static gboolean
+-configure_mode_setting (GstKMSSink * self, GstVideoInfo * vinfo)
++configure_mode_setting (GstKMSSink * self, GstVideoInfo * vinfo, guint32 fb_id)
+ {
+   gboolean ret;
+   drmModeConnector *conn;
+   int err;
+   gint i;
+   drmModeModeInfo *mode;
+-  guint32 fb_id;
+   GstKMSMemory *kmsmem;
+ 
+   ret = FALSE;
+@@ -450,7 +449,6 @@ configure_mode_setting (GstKMSSink * sel
+   kmsmem = (GstKMSMemory *) gst_kms_allocator_bo_alloc (self->allocator, vinfo);
+   if (!kmsmem)
+     goto bo_failed;
+-  fb_id = kmsmem->fb_id;
+ 
+   conn = drmModeGetConnector (self->fd, self->conn_id);
+   if (!conn)
+@@ -1150,8 +1148,6 @@ gst_kms_sink_set_caps (GstBaseSink * bsi
+     self->pool = NULL;
+   }
+ 
+-  if (self->modesetting_enabled && !configure_mode_setting (self, &vinfo))
+-    goto modesetting_failed;
+ 
+   GST_OBJECT_LOCK (self);
+   if (self->reconfigure) {
+@@ -1185,13 +1181,6 @@ no_disp_ratio:
+     return FALSE;
+   }
+ 
+-modesetting_failed:
+-  {
+-    GST_ELEMENT_ERROR (self, CORE, NEGOTIATION, (NULL),
+-        ("failed to configure video mode"));
+-    return FALSE;
+-  }
+-
+ }
+ 
+ static gboolean
+@@ -1578,6 +1567,7 @@ gst_kms_sink_show_frame (GstVideoSink *
+   GstVideoRectangle dst = { 0, };
+   GstVideoRectangle result;
+   GstFlowReturn res;
++  static bool configure_flag = FALSE;
+ 
+   self = GST_KMS_SINK (vsink);
+ 
+@@ -1609,6 +1599,11 @@ gst_kms_sink_show_frame (GstVideoSink *
+   GST_OBJECT_LOCK (self);
+   if (self->modesetting_enabled) {
+     self->buffer_id = fb_id;
++    if ( !configure_flag && !configure_mode_setting (self, &self->vinfo, self->buffer_id)) {
++        configure_flag = TRUE;
++        goto modesetting_failed;
++      }
++    configure_flag = TRUE;
+     goto sync_frame;
+   }
+ 
+@@ -1724,6 +1719,13 @@ no_disp_ratio:
+         ("Error calculating the output display ratio of the video."));
+     goto bail;
+   }
++
++modesetting_failed:
++  {
++    GST_ELEMENT_ERROR (self, CORE, NEGOTIATION, (NULL),
++        ("failed to configure video mode"));
++    return GST_FLOW_ERROR;
++  }
+ }
+ 
+ static void

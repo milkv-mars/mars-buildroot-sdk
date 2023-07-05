@@ -1,0 +1,5 @@
+
+config BR2_PACKAGE_USB_WIFI
+	bool "usb wifi ecr6600u/aic8800"
+	help
+	  firmware for usb wifi ecr6600u/aic8800

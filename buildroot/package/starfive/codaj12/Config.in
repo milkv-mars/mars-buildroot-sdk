@@ -1,0 +1,6 @@
+comment "codaj12 package"
+
+config BR2_PACKAGE_CODAJ12
+	bool "codaj12"
+	help
+	  codaj12 package

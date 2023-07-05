@@ -1,0 +1,32 @@
+From 652fa5837d0c54c4b850b6b2a2171dc94aab3c1f Mon Sep 17 00:00:00 2001
+From: sw.multimedia <sw.multimedia@starfivetech.com>
+Date: Thu, 13 Jan 2022 13:57:12 +0800
+Subject: [PATCH 06/10] libcamera: pixel formats supported should move to
+ request pads
+
+---
+ src/gstreamer/gstlibcamerasrc.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/gstreamer/gstlibcamerasrc.cpp b/src/gstreamer/gstlibcamerasrc.cpp
+index 6329b01a..53247c3f 100644
+--- a/src/gstreamer/gstlibcamerasrc.cpp
++++ b/src/gstreamer/gstlibcamerasrc.cpp
+@@ -151,12 +151,12 @@ G_DEFINE_TYPE_WITH_CODE(GstLibcameraSrc, gst_libcamera_src, GST_TYPE_ELEMENT,
+ )
+ /* For the simple case, we have a src pad that is always present. */
+ GstStaticPadTemplate src_template = {
+-	"src", GST_PAD_SRC, GST_PAD_ALWAYS, TEMPLATE_CAPS_SRC
++	"src", GST_PAD_SRC, GST_PAD_ALWAYS, TEMPLATE_CAPS
+ };
+ 
+ /* More pads can be requested in state < PAUSED */
+ GstStaticPadTemplate request_src_template = {
+-	"src_%u", GST_PAD_SRC, GST_PAD_REQUEST, TEMPLATE_CAPS
++	"src_%u", GST_PAD_SRC, GST_PAD_REQUEST, TEMPLATE_CAPS_SRC
+ };
+ 
+ void
+-- 
+2.25.1
+

@@ -1,0 +1,11 @@
+--- ifplugd-0.28.orig/conf/ifplugd.conf	2003-12-12 01:58:43.000000000 +0800
++++ ifplugd-0.28/conf/ifplugd.conf	2023-04-24 17:43:48.342070388 +0800
+@@ -34,7 +34,7 @@ INTERFACES="eth0 eth1"
+
+ # Additional parameters for ifplugd.
+ # (Run "ifplugd -h" for further information.)
+-ARGS="-fwI -u0 -d10"
++ARGS="-fwI -u0 -d1"
+
+ # Additional parameters for ifplugd for the specified interface.  Note
+ # that $ARGS is ignored, when a variable like this is set for an

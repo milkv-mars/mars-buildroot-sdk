@@ -1,0 +1,92 @@
+From aec56c70bdc7f037a88deaa4cc84854ec2c961e9 Mon Sep 17 00:00:00 2001
+From: sw.multimedia <sw.multimedia@starfivetech.com>
+Date: Mon, 22 Nov 2021 10:16:15 +0800
+Subject: [PATCH] add select camera options
+
+---
+ core/libcamera_app.cpp | 29 +++++++++++++++++++++--------
+ core/options.hpp       |  5 +++++
+ 2 files changed, 26 insertions(+), 8 deletions(-)
+
+diff --git a/core/libcamera_app.cpp b/core/libcamera_app.cpp
+index 3c4d862..22896a7 100644
+--- a/core/libcamera_app.cpp
++++ b/core/libcamera_app.cpp
+@@ -58,17 +58,30 @@ void LibcameraApp::OpenCamera()
+ 	if (camera_manager_->cameras().size() == 0)
+ 		throw std::runtime_error("no cameras available");
+ 
+-	std::string const &cam_id = camera_manager_->cameras()[0]->id();
+-	camera_ = camera_manager_->get(cam_id);
+-	if (!camera_)
+-		throw std::runtime_error("failed to find camera " + cam_id);
+-
+-	if (camera_->acquire())
+-		throw std::runtime_error("failed to acquire camera " + cam_id);
++	if (options_->camera_name.length()) {
++		char *endptr;
++		unsigned long index = strtoul(options_->camera_name.c_str(), &endptr, 10);
++		std::cout << "Acquired camera name:  " << options_->camera_name << std::endl;
++		if (*endptr == '\0' && index > 0 && index <= camera_manager_->cameras().size())
++			camera_ = camera_manager_->cameras()[index - 1];
++		else
++			camera_ = camera_manager_->get(options_->camera_name);
++		if (!camera_)
++			throw std::runtime_error("failed to find camera " + options_->camera_name);
++		if (camera_->acquire())
++			throw std::runtime_error("failed to acquire camera " + options_->camera_name);
++	} else {
++		std::string const &cam_id = camera_manager_->cameras()[0]->id();
++		camera_ = camera_manager_->get(cam_id);
++		if (!camera_)
++			throw std::runtime_error("failed to find camera " + cam_id);
++		if (camera_->acquire())
++			throw std::runtime_error("failed to acquire camera " + cam_id);
++	}
+ 	camera_acquired_ = true;
+ 
+ 	if (options_->verbose)
+-		std::cout << "Acquired camera " << cam_id << std::endl;
++		std::cout << "Acquired camera " << camera_->id() << std::endl;
+ 
+ 	if (!options_->post_process_file.empty())
+ 		post_processor_.Read(options_->post_process_file);
+diff --git a/core/options.hpp b/core/options.hpp
+index 5c68088..de49beb 100644
+--- a/core/options.hpp
++++ b/core/options.hpp
+@@ -30,6 +30,8 @@ struct Options
+ 			 "Displays the build version number")
+ 			("verbose,v", value<bool>(&verbose)->default_value(false)->implicit_value(true),
+ 			 "Output extra debug and diagnostics")
++			("camera", value<std::string>(&camera_name),
++			 "Specify which camera to operate on, by id or by index")
+ 			("config,c", value<std::string>(&config_file)->implicit_value("config.txt"),
+ 			 "Read the options from a file. If no filename is specified, default to config.txt. "
+ 			 "In case of duplicate options, the ones provided on the command line will be used. "
+@@ -115,6 +117,7 @@ struct Options
+ 	bool help;
+ 	bool version;
+ 	bool verbose;
++	std::string camera_name;
+ 	uint64_t timeout; // in ms
+ 	std::string config_file;
+ 	std::string output;
+@@ -259,12 +262,14 @@ struct Options
+ 	{
+ 		std::cout << "Options:" << std::endl;
+ 		std::cout << "    verbose: " << verbose << std::endl;
++		std::cout << "    camera_name: " << camera_name << std::endl;
+ 		if (!config_file.empty())
+ 			std::cout << "    config file: " << config_file << std::endl;
+ 		std::cout << "    info_text:" << info_text << std::endl;
+ 		std::cout << "    timeout: " << timeout << std::endl;
+ 		std::cout << "    width: " << width << std::endl;
+ 		std::cout << "    height: " << height << std::endl;
++		std::cout << "    pixelformat: " << pixelformat << std::endl;
+ 		std::cout << "    output: " << output << std::endl;
+ 		std::cout << "    post_process_file: " << post_process_file << std::endl;
+ 		std::cout << "    rawfull: " << rawfull << std::endl;
+-- 
+2.17.1
+

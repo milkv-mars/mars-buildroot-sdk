@@ -1,0 +1,58 @@
+Set thread priorities without using RTKit.
+Disable v4l2 module.
+
+Signed-off-by: Windsome Zeng <windsome.zeng@starfivetech.com>
+
+diff -purN a/media-session.d/alsa-monitor.conf b/media-session.d/alsa-monitor.conf
+--- a/media-session.d/alsa-monitor.conf	2022-10-13 16:59:41.918942274 +0800
++++ b/media-session.d/alsa-monitor.conf	2022-10-13 16:51:03.885741470 +0800
+@@ -12,7 +12,7 @@ properties = {
+     #alsa.jack-device = false
+ 
+     # Reserve devices.
+-    #alsa.reserve = true
++    alsa.reserve = false
+ }
+ 
+ rules = [
+diff -purN a/media-session.d/media-session.conf b/media-session.d/media-session.conf
+--- a/media-session.d/media-session.conf	2022-10-13 16:59:41.918942274 +0800
++++ b/media-session.d/media-session.conf	2022-10-13 16:51:03.885741470 +0800
+@@ -33,12 +33,23 @@ context.modules = [
+     # If nofail is given, module initialization failures are ignored.
+     #
+     # Uses RTKit to boost the data thread priority.
+-    { name = libpipewire-module-rtkit
++    #{ name = libpipewire-module-rtkit
++    #    args = {
++    #        #nice.level   = -11
++    #        #rt.prio      = 88
++    #        #rt.time.soft = 2000000
++    #        #rt.time.hard = 2000000
++    #    }
++    #    flags = [ ifexists nofail ]
++    #}
++
++    # Set thread priorities without using RTKit.
++    { name = libpipewire-module-rt
+         args = {
+-            #nice.level   = -11
+-            #rt.prio      = 88
+-            #rt.time.soft = 2000000
+-            #rt.time.hard = 2000000
++            nice.level   = -11
++            rt.prio      = 88
++            rt.time.soft = 2000000
++            rt.time.hard = 2000000
+         }
+         flags = [ ifexists nofail ]
+     }
+@@ -75,7 +86,7 @@ session.modules = {
+     default = [
+         flatpak                 # manages flatpak access
+         portal                  # manage portal permissions
+-        v4l2                    # video for linux udev detection
++        #v4l2                    # video for linux udev detection
+         #libcamera              # libcamera udev detection
+         suspend-node            # suspend inactive nodes
+         policy-node             # configure and link nodes

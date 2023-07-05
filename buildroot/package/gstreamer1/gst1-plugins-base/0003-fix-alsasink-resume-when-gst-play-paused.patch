@@ -1,0 +1,16 @@
+Fix alsasink resume failed when gst-play paused
+
+Signed-off-by: Leo Lu <leo.lu@starfivetech.com>
+
+
+diff -purN a/ext/alsa/gstalsasink.c b/ext/alsa/gstalsasink.c
+--- a/ext/alsa/gstalsasink.c	2021-09-09 03:02:22.115758400 +0800
++++ b/ext/alsa/gstalsasink.c	2023-01-28 16:11:57.149906083 +0800
+@@ -1170,6 +1170,7 @@ gst_alsasink_resume (GstAudioSink * asin
+ 
+   if (alsa->hw_support_pause == TRUE) {
+     GST_ALSA_SINK_LOCK (asink);
++    CHECK (snd_pcm_prepare (alsa->handle), resume_error);
+     CHECK (snd_pcm_pause (alsa->handle, 0), resume_error);
+     GST_DEBUG_OBJECT (alsa, "resume done");
+     GST_ALSA_SINK_UNLOCK (asink);

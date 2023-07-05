@@ -1,0 +1,1109 @@
+From d936cae7ba6ab3ae4665ac889bcef4c90354c36b Mon Sep 17 00:00:00 2001
+From: sw.multimedia <sw.multimedia@starfivetech.com>
+Date: Sat, 9 Oct 2021 18:09:44 +0800
+Subject: [PATCH 01/10] add starfive pipeline
+
+---
+ include/libcamera/internal/v4l2_subdevice.h  |   1 +
+ include/linux/v4l2-subdev.h                  |   9 +
+ meson_options.txt                            |   2 +-
+ src/gstreamer/gstlibcamera-utils.cpp         |   7 +
+ src/gstreamer/gstlibcamerasrc.cpp            |  16 +-
+ src/libcamera/pipeline/starfive/meson.build  |   5 +
+ src/libcamera/pipeline/starfive/starfive.cpp | 940 +++++++++++++++++++
+ src/libcamera/v4l2_subdevice.cpp             |  12 +
+ 8 files changed, 990 insertions(+), 2 deletions(-)
+ create mode 100644 src/libcamera/pipeline/starfive/meson.build
+ create mode 100644 src/libcamera/pipeline/starfive/starfive.cpp
+
+diff --git a/include/libcamera/internal/v4l2_subdevice.h b/include/libcamera/internal/v4l2_subdevice.h
+index 97b89fb9..fe8835bd 100644
+--- a/include/libcamera/internal/v4l2_subdevice.h
++++ b/include/libcamera/internal/v4l2_subdevice.h
+@@ -63,6 +63,7 @@ public:
+ 
+ 	static std::unique_ptr<V4L2Subdevice>
+ 	fromEntityName(const MediaDevice *media, const std::string &entity);
++	int ioctlPrivate(unsigned long request, void *argp);
+ 
+ protected:
+ 	std::string logPrefix() const override;
+diff --git a/include/linux/v4l2-subdev.h b/include/linux/v4l2-subdev.h
+index a38454d9..4c9af64d 100644
+--- a/include/linux/v4l2-subdev.h
++++ b/include/linux/v4l2-subdev.h
+@@ -206,4 +206,13 @@ struct v4l2_subdev_capability {
+ #define VIDIOC_SUBDEV_QUERY_DV_TIMINGS		_IOR('V', 99, struct v4l2_dv_timings)
+ #define VIDIOC_SUBDEV_DV_TIMINGS_CAP		_IOWR('V', 100, struct v4l2_dv_timings_cap)
+ 
++#define STF_ISPFW_FILENAME_MAX_LEN  30
++
++struct stfisp_fw_info {
++	char filename[STF_ISPFW_FILENAME_MAX_LEN];
++};
++
++#define VIDIOC_STFISP_LOAD_FW \
++	_IOW('V', BASE_VIDIOC_PRIVATE + 1, struct stfisp_fw_info)
++
+ #endif
+diff --git a/meson_options.txt b/meson_options.txt
+index 2c80ad8b..14baa7ef 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -37,7 +37,7 @@ option('lc-compliance',
+ 
+ option('pipelines',
+         type : 'array',
+-        choices : ['ipu3', 'raspberrypi', 'rkisp1', 'simple', 'uvcvideo', 'vimc'],
++        choices : ['ipu3', 'raspberrypi', 'rkisp1', 'simple', 'uvcvideo', 'vimc', 'starfive'],
+         description : 'Select which pipeline handlers to include')
+ 
+ option('qcam',
+diff --git a/src/gstreamer/gstlibcamera-utils.cpp b/src/gstreamer/gstlibcamera-utils.cpp
+index 3f242286..bce4960a 100644
+--- a/src/gstreamer/gstlibcamera-utils.cpp
++++ b/src/gstreamer/gstlibcamera-utils.cpp
+@@ -139,6 +139,12 @@ gst_libcamera_stream_configuration_to_caps(const StreamConfiguration &stream_cfg
+ 			  "width", G_TYPE_INT, stream_cfg.size.width,
+ 			  "height", G_TYPE_INT, stream_cfg.size.height,
+ 			  nullptr);
++
++	// Add framerate negotiation support
++	// the range will be [ 0/1, 2147483647/1 ] as there is not any args 
++	// required from driver for the time being.
++	gst_structure_set(s, "framerate", GST_TYPE_FRACTION_RANGE, 0, 1, G_MAXINT, 1, NULL);
++
+ 	gst_caps_append_structure(caps, s);
+ 
+ 	return caps;
+@@ -230,6 +236,7 @@ gst_libcamera_resume_task(GstTask *task)
+ 	/* We only want to resume the task if it's paused. */
+ 	GLibLocker lock(GST_OBJECT(task));
+ 	if (GST_TASK_STATE(task) == GST_TASK_PAUSED) {
++		GST_DEBUG("gst_libcamera_resume_task");
+ 		GST_TASK_STATE(task) = GST_TASK_STARTED;
+ 		GST_TASK_SIGNAL(task);
+ 	}
+diff --git a/src/gstreamer/gstlibcamerasrc.cpp b/src/gstreamer/gstlibcamerasrc.cpp
+index 812ba7a2..1dd0e807 100644
+--- a/src/gstreamer/gstlibcamerasrc.cpp
++++ b/src/gstreamer/gstlibcamerasrc.cpp
+@@ -46,6 +46,7 @@ using namespace libcamera;
+ 
+ GST_DEBUG_CATEGORY_STATIC(source_debug);
+ #define GST_CAT_DEFAULT source_debug
++#define TASK_PAUSE_COUNT_MAX 2
+ 
+ struct RequestWrap {
+ 	RequestWrap(std::unique_ptr<Request> request);
+@@ -125,6 +126,7 @@ struct _GstLibcameraSrc {
+ 	GstLibcameraSrcState *state;
+ 	GstLibcameraAllocator *allocator;
+ 	GstFlowCombiner *flow_combiner;
++	guint task_pause_count;
+ };
+ 
+ enum {
+@@ -340,8 +342,20 @@ gst_libcamera_src_task_run(gpointer user_data)
+ 			}
+ 		}
+ 
+-		if (do_pause)
++		if (do_pause){
++			self->task_pause_count ++;
++			GST_DEBUG_OBJECT(self, "task_pause_count: %d'", self->task_pause_count);
++		} else {
++			self->task_pause_count = 0;
++			GST_DEBUG_OBJECT(self, "reset task_pause_count ");
++		}
++
++		if ( self->task_pause_count > TASK_PAUSE_COUNT_MAX)
++		{
++			GST_DEBUG_OBJECT(self, "gst_task_pause");
+ 			gst_task_pause(self->task);
++		}
++
+ 	}
+ }
+ 
+diff --git a/src/libcamera/pipeline/starfive/meson.build b/src/libcamera/pipeline/starfive/meson.build
+new file mode 100644
+index 00000000..2f2d2a75
+--- /dev/null
++++ b/src/libcamera/pipeline/starfive/meson.build
+@@ -0,0 +1,5 @@
++# SPDX-License-Identifier: CC0-1.0
++
++libcamera_sources += files([
++    'starfive.cpp',
++])
+diff --git a/src/libcamera/pipeline/starfive/starfive.cpp b/src/libcamera/pipeline/starfive/starfive.cpp
+new file mode 100644
+index 00000000..8797bdcb
+--- /dev/null
++++ b/src/libcamera/pipeline/starfive/starfive.cpp
+@@ -0,0 +1,940 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/*
++ * starfive.cpp - Pipeline handler for starfive devices
++ */
++#include <algorithm>
++#include <assert.h>
++#include <fcntl.h>
++#include <mutex>
++#include <queue>
++#include <sys/mman.h>
++#include <math.h>
++
++#include <libcamera/camera.h>
++#include <libcamera/control_ids.h>
++#include <libcamera/file_descriptor.h>
++#include <libcamera/formats.h>
++#include <libcamera/logging.h>
++#include <libcamera/property_ids.h>
++#include <libcamera/request.h>
++#include <libcamera/stream.h>
++#include <linux/media-bus-format.h>
++
++#include <linux/videodev2.h>
++#include <linux/v4l2-subdev.h>
++
++#include "libcamera/internal/camera.h"
++#include "libcamera/internal/camera_sensor.h"
++#include "libcamera/internal/device_enumerator.h"
++#include "libcamera/internal/ipa_manager.h"
++#include "libcamera/internal/media_device.h"
++#include "libcamera/internal/pipeline_handler.h"
++// #include "libcamera/internal/utils.h"
++// #include "libcamera/internal/v4l2_controls.h"
++#include "libcamera/internal/v4l2_videodevice.h"
++
++#define STF_MAX_CAMERAS   3
++
++namespace libcamera {
++
++LOG_DEFINE_CATEGORY(STARFIVE)
++
++static constexpr unsigned int BUFFER_COUNT = 4;
++static constexpr unsigned int MAX_STREAMS = 2;
++static const Size OUTPUT_MIN_SIZE = { 8, 8 };
++static const Size OUTPUT_MAX_SIZE = { 8192, 8192 };
++
++namespace {
++
++typedef enum {
++	DVP_YUV = 0,
++	MIPICSI0_YUV,
++	MIPICSI1_YUV,
++	DVP_ISP0,    // ISP0
++	MIPICSI0_ISP0,
++	MIPICSI1_ISP0,
++	DVP_ISP1,    // ISP1
++	MIPICSI0_ISP1,
++	MIPICSI1_ISP1,
++	SENSORTYPE_MAX
++} SensorType;
++
++typedef struct {
++	std::string sensorEntityName_;
++	std::string sensorFwImageName_;
++	SensorType sensorType_;
++} SensorConfig;
++
++const std::vector<SensorConfig> sensorConfigs = {
++	{ "imx219 0-0010", "stf_isp0_fw_dump.bin", MIPICSI0_ISP0 },
++	{ "imx219 2-0010", "stf_isp0_fw_dump.bin", MIPICSI1_ISP1 },
++};
++
++typedef struct {
++	std::string source;
++	std::string link;
++} PipelineConfigLink;
++
++const std::vector<PipelineConfigLink> dvpyuvConfig = {
++	{"stf_dvp0", "stf_vin0_wr"},
++};
++
++const std::vector<PipelineConfigLink> mipicsi0yuvConfig = {
++	{"stf_csiphy0", "stf_csi0"},
++	{"stf_csi0", "stf_vin0_wr"}
++};
++
++const std::vector<PipelineConfigLink> mipicsi1yuvConfig = {
++	{"stf_csiphy1", "stf_csi1"},
++	{"stf_csi1", "stf_vin0_wr"}
++};
++
++const std::vector<PipelineConfigLink> dvpraw0Config = {
++	{"stf_dvp0", "stf_isp0"},
++	{"stf_isp0", "stf_vin0_isp0"}
++};
++
++const std::vector<PipelineConfigLink> mipicsi0raw0Config = {
++	{"stf_csiphy0", "stf_csi0"},
++	{"stf_csi0", "stf_isp0"},
++	{"stf_isp0", "stf_vin0_isp0"}
++};
++
++const std::vector<PipelineConfigLink> mipicsi1raw0Config = {
++	{"stf_csiphy1", "stf_csi1"},
++	{"stf_csi1", "stf_isp0"},
++	{"stf_isp0", "stf_vin0_isp0"}
++};
++
++const std::vector<PipelineConfigLink> dvpraw1Config = {
++	{"stf_dvp0", "stf_isp1"},
++	{"stf_isp1", "stf_vin0_isp1"}
++};
++
++const std::vector<PipelineConfigLink> mipicsi0raw1Config = {
++	{"stf_csiphy0", "stf_csi0"},
++	{"stf_csi0", "stf_isp1"},
++	{"stf_isp1", "stf_vin0_isp1"}
++};
++
++const std::vector<PipelineConfigLink> mipicsi1raw1Config = {
++	{"stf_csiphy1", "stf_csi1"},
++	{"stf_csi1", "stf_isp1"},
++	{"stf_isp1", "stf_vin0_isp1"}
++};
++
++const std::vector<PipelineConfigLink> pipelineConfigs[SENSORTYPE_MAX] = {
++	dvpyuvConfig,
++	mipicsi0yuvConfig,
++	mipicsi1yuvConfig,
++	dvpraw0Config,
++	mipicsi0raw0Config,
++	mipicsi1raw0Config,
++	dvpraw1Config,
++	mipicsi0raw1Config,
++	mipicsi1raw1Config,
++};
++
++const std::map<uint32_t, PixelFormat> mbusCodesToPixelFormat = {
++	{ MEDIA_BUS_FMT_SBGGR10_1X10, formats::SBGGR12 },
++	{ MEDIA_BUS_FMT_SGBRG10_1X10, formats::SGBRG12 },
++	{ MEDIA_BUS_FMT_SGRBG10_1X10, formats::SGRBG12 },
++	{ MEDIA_BUS_FMT_SRGGB10_1X10, formats::SRGGB12 },
++};
++
++} /* namespace */
++
++class StarFiveCameraData : public Camera::Private
++{
++public:
++	StarFiveCameraData(PipelineHandler *pipe, MediaDevice *media,
++			std::string entityName,
++			std::string sensorEntityName)
++		: Camera::Private(pipe), media_(media)
++	{
++		LOG(STARFIVE, Debug) << __func__;
++		sensorEntityName_ = sensorEntityName;
++		videoEntityName_ = entityName;
++		if ( videoEntityName_ == "stf_vin0_isp0_video1")
++			ispEntityName_ = "stf_isp0";
++		else if (videoEntityName_ == "stf_vin0_isp1_video2")
++			ispEntityName_ = "stf_isp1";
++		else
++			ispEntityName_ = "unknow";
++
++		video_ = nullptr;
++		raw_ = nullptr;
++		sensor_ = nullptr;
++		ispSubDev_ = nullptr;
++		haveRaw_ = false;
++		rawActive_= false;
++	}
++
++	~StarFiveCameraData()
++	{
++		LOG(STARFIVE, Debug) << __func__;
++		delete sensor_;
++		delete video_;
++		if (raw_ != nullptr)
++			delete raw_;
++		if (ispSubDev_ != nullptr)
++			delete ispSubDev_;
++	}
++
++	int init();
++	void bufferReady(FrameBuffer *buffer);
++	bool haveRaw() const { return haveRaw_; }
++	bool rawActive() const { return rawActive_; }
++	void setRawActive(bool val) { rawActive_ = val; }
++	std::vector<SizeRange> sensorSizes() const;
++	std::vector<PixelFormat> sensorFormats() const;
++	std::vector<PixelFormat> videoFormats() const;
++
++	MediaDevice *media_;
++	V4L2VideoDevice *video_;
++	V4L2VideoDevice *raw_;
++	V4L2Subdevice *ispSubDev_;
++	CameraSensor *sensor_;
++	Stream outStream_;
++	Stream rawStream_;
++
++private:
++	bool haveRaw_;
++	bool rawActive_;
++	std::string videoEntityName_;
++	std::string sensorEntityName_;
++	std::string ispEntityName_;
++	std::string getRawVideoEntityName()
++	{
++		LOG(STARFIVE, Debug) << __func__;
++		if ( videoEntityName_ == "stf_vin0_isp0_video1")
++			return "stf_vin0_isp0_raw_video3";
++		else if (videoEntityName_ == "stf_vin0_isp1_video2")
++			return "stf_vin0_isp1_raw_video4";
++		else
++			return "unknow";
++	}
++	int ispLoadFW(const char *filename);
++};
++
++std::vector<PixelFormat> StarFiveCameraData::videoFormats() const
++{
++	if (!video_)
++		return {};
++
++	std::vector<PixelFormat> formats;
++	for (auto it : video_->formats()) {
++		formats.push_back(it.first.toPixelFormat());
++	}
++
++	return formats;
++}
++
++std::vector<PixelFormat> StarFiveCameraData::sensorFormats() const
++{
++	if (!sensor_)
++		return {};
++
++	std::vector<PixelFormat> formats;
++	for (unsigned int code : sensor_->mbusCodes()) {
++		auto it = mbusCodesToPixelFormat.find(code);
++		if (it != mbusCodesToPixelFormat.end())
++			formats.push_back(it->second);
++	}
++
++	return formats;
++}
++
++std::vector<SizeRange> StarFiveCameraData::sensorSizes() const
++{
++	if (!sensor_)
++		return {};
++
++	std::vector<SizeRange> sizes;
++	for (const Size &size : sensor_->sizes(sensor_->mbusCodes().at(0)))
++		sizes.emplace_back(size, size);
++
++	return sizes;
++}
++
++int StarFiveCameraData::ispLoadFW(const char *filename)
++{
++	struct stfisp_fw_info fw_info = {0};
++
++	if (!ispSubDev_)
++		return -ENODEV;
++
++	if (filename && (strlen(filename) < STF_ISPFW_FILENAME_MAX_LEN))
++		memcpy(fw_info.filename, filename, strlen(filename) + 1);
++	else
++		return -EINVAL;
++
++	LOG(STARFIVE, Debug)
++		<< "VIDIOC_STFISP_LOAD_FW: " << VIDIOC_STFISP_LOAD_FW
++		<< " filename: " << filename
++		<< " struct size: " << sizeof(struct stfisp_fw_info);
++
++	if (ispSubDev_->ioctlPrivate(VIDIOC_STFISP_LOAD_FW, &fw_info) < 0)
++		LOG(STARFIVE, Error) << "Load ISP fw failed" ;
++
++	return 0;
++}
++
++class StarFiveCameraConfiguration : public CameraConfiguration
++{
++public:
++	StarFiveCameraConfiguration(StarFiveCameraData *data);
++
++	Status validate() override;
++
++private:
++	StarFiveCameraData *data_;
++};
++
++int StarFiveCameraData::init()
++{
++	int ret;
++
++	LOG(STARFIVE, Debug) << __func__;
++	if (sensorEntityName_ != "unknow") {
++		sensor_ =
++		  new CameraSensor(media_->getEntityByName(sensorEntityName_));
++		ret = sensor_->init();
++		if (ret)
++			return ret;
++		LOG(STARFIVE, Debug) << "sensor id: " << sensor_->id();
++	} else {
++		LOG(STARFIVE, Debug) << " Can't find sensorEntityName!";
++		return -ENODEV;
++	}
++
++	if (ispEntityName_ != "unknow") {
++		ispSubDev_ =
++			new V4L2Subdevice(media_->getEntityByName(ispEntityName_));
++		LOG(STARFIVE, Debug) << "ispEntityName: " << ispEntityName_;
++		if (ispSubDev_->open())
++			return -ENODEV;
++
++		for (SensorConfig it : sensorConfigs) {
++			if (it.sensorEntityName_ == sensorEntityName_) {
++				ispLoadFW(it.sensorFwImageName_.c_str());
++				break;
++			}
++		}
++	}
++
++	video_ = new V4L2VideoDevice(media_->getEntityByName(videoEntityName_));
++	LOG(STARFIVE, Debug) << "videoEntityName: " << videoEntityName_;
++	if (video_->open())
++		return -ENODEV;
++
++	video_->bufferReady.connect(this, &StarFiveCameraData::bufferReady);
++	LOG(STARFIVE, Debug) << "driverName: " << video_->driverName();
++
++	std::string rawVideoEntityName = getRawVideoEntityName();
++	if (rawVideoEntityName != "unknow") {
++		raw_ =
++		  new V4L2VideoDevice(media_->getEntityByName(rawVideoEntityName));
++		LOG(STARFIVE, Debug)
++			<< "rawEntityName: " << rawVideoEntityName;
++		if (raw_->open()) {
++			LOG(STARFIVE, Debug) << "No raw data capture!!!";
++			haveRaw_ = false;
++		} else {
++			haveRaw_ = true;
++			raw_->bufferReady.connect(this,
++					&StarFiveCameraData::bufferReady);
++		}
++	}
++	
++	return 0;
++}
++
++class PipelineHandlerStarFive : public PipelineHandler
++{
++public:
++	PipelineHandlerStarFive(CameraManager *manager);
++	
++	CameraConfiguration *generateConfiguration(Camera *camera,
++	const StreamRoles &roles) override;
++	int configure(Camera *camera, CameraConfiguration *config) override;
++	
++	int exportFrameBuffers(Camera *camera, Stream *stream,
++	std::vector<std::unique_ptr<FrameBuffer>> *buffers) override;
++	
++	int start(Camera *camera, const ControlList *controls) override;
++	void stop(Camera *camera) override;
++	
++	int queueRequestDevice(Camera *camera, Request *request) override;
++	
++	bool match(DeviceEnumerator *enumerator) override;
++
++private:
++	int processControls(StarFiveCameraData *data, Request *request);
++
++	StarFiveCameraData *cameraData(Camera *camera)
++	{
++		return static_cast<StarFiveCameraData *>(camera->_d());
++	}
++
++	int registerCameras();
++	std::string getVideoEntityNameById(unsigned int id);
++	std::string findSensorEntityName(std::string entityName);
++	int enableLinks(std::vector<PipelineConfigLink> config);
++
++	MediaDevice *starFiveMediaDev_;
++};
++
++StarFiveCameraConfiguration::StarFiveCameraConfiguration(StarFiveCameraData *data)
++	: CameraConfiguration(), data_(data)
++{
++	LOG(STARFIVE, Debug) << __func__;
++}
++
++CameraConfiguration::Status StarFiveCameraConfiguration::validate()
++{
++	LOG(STARFIVE, Debug) << __func__;
++	Status status = Valid;
++
++	if (config_.empty())
++		return Invalid;
++
++	LOG(STARFIVE, Debug) << "config_.size " << config_.size();
++	/* Cap the number of entries to the available streams. */
++	if (config_.size() > MAX_STREAMS) {
++		config_.resize(MAX_STREAMS);
++		status = Adjusted;
++	}
++
++	for (unsigned int i = 0; i < config_.size(); ++i) {
++		const PixelFormatInfo &info =
++			PixelFormatInfo::info(config_[i].pixelFormat);
++		StreamConfiguration &cfg = config_[i];
++
++		LOG(STARFIVE, Debug)
++			<< "Validating stream: " << config_[i].toString();
++
++		const Size size = cfg.size;
++
++		cfg.size.width = std::max(OUTPUT_MIN_SIZE.width,
++				std::min(OUTPUT_MAX_SIZE.width, cfg.size.width));
++		cfg.size.height = std::max(OUTPUT_MIN_SIZE.height,
++				std::min(OUTPUT_MAX_SIZE.height, cfg.size.height));
++
++		if (cfg.size != size) {
++			LOG(STARFIVE, Debug)
++				<< "Adjusting size to " << cfg.size.toString();
++			status = Adjusted;
++		}
++
++		cfg.bufferCount = BUFFER_COUNT;
++
++		if (info.colourEncoding == PixelFormatInfo::ColourEncodingRAW
++				&& data_->haveRaw()) {
++			V4L2DeviceFormat format = {};
++			format.fourcc =
++				data_->raw_->toV4L2PixelFormat(cfg.pixelFormat);
++			format.size = cfg.size;
++
++			int ret = data_->raw_->tryFormat(&format);
++			if (ret)
++				return Invalid;
++
++			cfg.stride = format.planes[0].bpl;
++			cfg.frameSize = format.planes[0].size;
++
++			cfg.setStream(&data_->rawStream_);
++		} else {
++			V4L2DeviceFormat format = {};
++			format.fourcc =
++				data_->video_->toV4L2PixelFormat(cfg.pixelFormat);
++			format.size = cfg.size;
++
++			int ret = data_->video_->tryFormat(&format);
++			if (ret)
++				return Invalid;
++
++			cfg.stride = format.planes[0].bpl;
++			cfg.frameSize = format.planes[0].size;
++
++			cfg.setStream(&data_->outStream_);
++		}
++	}
++
++	return status;
++}
++
++PipelineHandlerStarFive::PipelineHandlerStarFive(CameraManager *manager)
++	: PipelineHandler(manager)
++{
++	LOG(STARFIVE, Debug) << __func__;
++}
++
++CameraConfiguration *
++PipelineHandlerStarFive::generateConfiguration(Camera *camera,
++					const StreamRoles &roles)
++{
++	LOG(STARFIVE, Debug) << __func__;
++	StarFiveCameraData *data = cameraData(camera);
++	StarFiveCameraConfiguration *config =
++		new StarFiveCameraConfiguration(data);
++
++	if (roles.empty())
++		return config;
++
++	for (const StreamRole role : roles) {
++		std::map<PixelFormat, std::vector<SizeRange>> streamFormats;
++		unsigned int bufferCount;
++		PixelFormat pixelFormat;
++		Size size;
++
++		LOG(STARFIVE, Debug) << "role: " << role;
++		size = data->sensor_->resolution();
++		switch (role) {
++		case StreamRole::StillCapture:
++		case StreamRole::Viewfinder:
++		case StreamRole::VideoRecording:
++			for (const auto &pixelformat : data->videoFormats()) {
++				streamFormats[pixelformat] = data->sensorSizes();
++			}
++			pixelFormat = data->videoFormats().at(0);
++			bufferCount = BUFFER_COUNT;
++
++			break;
++
++		case StreamRole::Raw: {
++			std::vector<unsigned int> mbusCodes =
++				utils::map_keys(mbusCodesToPixelFormat);
++
++			V4L2SubdeviceFormat sensorFormat =
++				data->sensor_->getFormat(mbusCodes, size);
++			if (!sensorFormat.mbus_code) {
++				LOG(STARFIVE, Error)
++					<< "Sensor does not support mbus code";
++				break;
++			}
++
++			pixelFormat =
++				mbusCodesToPixelFormat.at(sensorFormat.mbus_code);
++			size = sensorFormat.size;
++			bufferCount = BUFFER_COUNT;
++
++			streamFormats[pixelFormat] = data->sensorSizes();
++
++			break;
++		}
++		default:
++			LOG(STARFIVE, Error)
++				<< "Requested stream role not supported: "
++				<< role;
++			break;
++		}
++
++		StreamFormats formats(streamFormats);
++		StreamConfiguration cfg(formats);
++		cfg.size = size;
++		cfg.pixelFormat = pixelFormat;
++		cfg.bufferCount = bufferCount;
++		config->addConfiguration(cfg);
++	}
++
++	if (config->validate() == CameraConfiguration::Invalid)
++		return {};
++
++	return config;
++}
++
++int PipelineHandlerStarFive::configure(Camera *camera, CameraConfiguration *c)
++{
++	StarFiveCameraConfiguration *config =
++		static_cast<StarFiveCameraConfiguration *>(c);
++	StarFiveCameraData *data = cameraData(camera);
++	int ret;
++
++	LOG(STARFIVE, Debug) << __func__
++		<< " config->size: " << config->size();
++
++	for (unsigned int i = 0; i < config->size(); ++i) {
++		StreamConfiguration &cfg = (*config)[i];
++		Stream *stream = cfg.stream();
++
++		LOG(STARFIVE, Debug)
++			<< "config stream: " << cfg.toString();
++
++		if (stream == &data->rawStream_) {
++			V4L2DeviceFormat format = {};
++			format.fourcc =
++				data->raw_->toV4L2PixelFormat(cfg.pixelFormat);
++			format.size = cfg.size;
++
++			ret = data->raw_->setFormat(&format);
++			if (ret)
++				return ret;
++
++			if (format.size != cfg.size ||
++			    format.fourcc !=
++			    data->raw_->toV4L2PixelFormat(cfg.pixelFormat))
++				return -EINVAL;
++
++		} else if (stream == &data->outStream_) {
++			V4L2DeviceFormat format = {};
++			format.fourcc =
++				data->video_->toV4L2PixelFormat(cfg.pixelFormat);
++			format.size = cfg.size;
++
++			ret = data->video_->setFormat(&format);
++			if (ret)
++				return ret;
++
++			if (format.size != cfg.size ||
++			    format.fourcc !=
++			    data->video_->toV4L2PixelFormat(cfg.pixelFormat))
++				return -EINVAL;
++		}
++	}
++
++	return 0;
++}
++
++int PipelineHandlerStarFive::exportFrameBuffers(Camera *camera, Stream *stream,
++			std::vector<std::unique_ptr<FrameBuffer>> *buffers)
++{
++	StarFiveCameraData *data = cameraData(camera);
++	unsigned int count = stream->configuration().bufferCount;
++
++	LOG(STARFIVE, Debug) << __func__ << " bufferCount: " << count;
++
++	if (stream == &data->outStream_)
++		return data->video_->exportBuffers(count, buffers);
++	else if (stream == &data->rawStream_)
++		return data->raw_->exportBuffers(count, buffers);
++
++	return -EINVAL;
++}
++
++int PipelineHandlerStarFive::start(Camera *camera, const ControlList *controls)
++{
++	StarFiveCameraData *data = cameraData(camera);
++	unsigned int count = data->outStream_.configuration().bufferCount;
++	int ret = -EINVAL;
++	
++	LOG(STARFIVE, Debug) << __func__ << " bufferCount: " << count;
++
++	ret = data->video_->importBuffers(count);
++	if (ret < 0)
++		return ret;
++
++	ret = data->video_->streamOn();
++	if (ret < 0)
++		goto error;
++
++	if (data->haveRaw()) {
++		count = data->rawStream_.configuration().bufferCount;
++
++		LOG(STARFIVE, Debug) << "rawbufferCount: " << count;
++		if (count) {
++			ret = data->raw_->importBuffers(count);
++			if (ret < 0) {
++				data->setRawActive(false);
++				LOG(STARFIVE, Debug)
++					<< "raw video importBuffers failed!";
++				goto error;
++			}
++			ret = data->raw_->streamOn();
++			if (ret < 0) {
++				data->setRawActive(false);
++				data->raw_->releaseBuffers();
++				LOG(STARFIVE, Debug)
++					<< "raw video streamOn failed!";
++				goto error;
++			}
++			data->setRawActive(true);
++		}
++	}
++
++	return ret;
++error:
++	data->video_->releaseBuffers();
++	return ret;
++}
++
++void PipelineHandlerStarFive::stop(Camera *camera)
++{
++	LOG(STARFIVE, Debug) << __func__;
++
++	StarFiveCameraData *data = cameraData(camera);
++	data->video_->streamOff();
++	data->video_->releaseBuffers();
++	if (data->rawActive()) {
++		data->raw_->streamOff();
++		data->raw_->releaseBuffers();
++		data->setRawActive(false);
++	}
++}
++
++int PipelineHandlerStarFive::processControls(StarFiveCameraData *data, Request *request)
++{
++	LOG(STARFIVE, Debug) << __func__;
++
++	ControlList controls(data->sensor_->controls());
++
++	for (auto it : request->controls()) {
++		unsigned int id = it.first;
++		unsigned int offset;
++		uint32_t cid;
++
++		if (id == controls::Brightness) {
++			cid = V4L2_CID_BRIGHTNESS;
++			offset = 128;
++		} else if (id == controls::Contrast) {
++			cid = V4L2_CID_CONTRAST;
++			offset = 0;
++		} else if (id == controls::Saturation) {
++			cid = V4L2_CID_SATURATION;
++			offset = 0;
++		} else {
++			continue;
++		}
++
++		int32_t value = lroundf(it.second.get<float>() * 128 + offset);
++		controls.set(cid, std::clamp(value, 0, 255));
++	}
++
++	for (const auto &ctrl : controls)
++		LOG(STARFIVE, Debug)
++			<< "Setting control " << utils::hex(ctrl.first)
++			<< " to " << ctrl.second.toString();
++
++	int ret = data->sensor_->setControls(&controls);
++	if (ret) {
++		LOG(STARFIVE, Debug)
++			<< "Failed to set controls: " << ret;
++		return ret < 0 ? ret : -EINVAL;
++	}
++
++	return ret;
++}
++
++int PipelineHandlerStarFive::queueRequestDevice(Camera *camera, Request *request)
++{
++	StarFiveCameraData *data = cameraData(camera);
++	int error = 0;
++
++	LOG(STARFIVE, Debug) << __func__;
++	int ret = processControls(data, request);
++	if (ret < 0)
++		return ret;
++
++	for (auto it : request->buffers()) {
++		const Stream *stream = it.first;
++		FrameBuffer *buffer = it.second;
++		int ret;
++
++		LOG(STARFIVE, Debug)
++			<< "stream queueBuffer : " << stream->configuration().toString();
++
++		if (stream == &data->outStream_)
++			ret = data->video_->queueBuffer(buffer);
++		else if (stream == &data->rawStream_)
++			ret = data->raw_->queueBuffer(buffer);
++		else
++			continue;
++
++		if (ret < 0)
++			error = ret;
++	}
++
++	return error;
++}
++
++std::string PipelineHandlerStarFive::getVideoEntityNameById(unsigned int id)
++{
++	LOG(STARFIVE, Debug) << __func__;
++	switch (id) {
++	case 0:
++		return "stf_vin0_wr_video0";
++	case 1:
++		return "stf_vin0_isp0_video1";
++	case 2:
++		return "stf_vin0_isp1_video2";
++	case 3:
++		return "stf_vin0_isp0_raw_video3";
++	case 4:
++		return "stf_vin0_isp1_raw_video4";
++	default:
++		return "unknow";
++	}
++
++	return "unknow";
++}
++
++std::string PipelineHandlerStarFive::findSensorEntityName(std::string entityName)
++{
++	std::string sensorEntityName;
++	bool found = false;
++	MediaEntity *sensorEntity = starFiveMediaDev_->getEntityByName(entityName);
++
++	while (1) {
++		LOG(STARFIVE, Debug) << "findSensorEntityName: " << sensorEntity->name();
++		const std::vector<MediaPad *> &pads = sensorEntity->pads();
++
++		if (pads.empty())
++			break;
++
++		MediaPad *sink = pads[0];
++		MediaLink *link;
++		bool found_enable_link = false;
++
++		for (MediaLink *it : sink->links()) {
++			if (it->flags() & MEDIA_LNK_FL_ENABLED) {
++				found_enable_link = true;
++				link = it;
++				break;
++			}
++		}
++
++		if (!found_enable_link)
++			break;
++
++		sensorEntity = link->source()->entity();
++		if (sensorEntity->function() == MEDIA_ENT_F_CAM_SENSOR) {
++			found = true;
++			break;
++		}
++	}
++
++	if (found)
++		sensorEntityName = sensorEntity->name();
++	else
++		sensorEntityName = "unknow";
++
++	LOG(STARFIVE, Debug) << "sensorEntityName: " << sensorEntityName;
++	return sensorEntityName;
++}
++
++int PipelineHandlerStarFive::registerCameras()
++{
++	unsigned int numCameras = 0;
++
++	LOG(STARFIVE, Debug) << __func__;
++	for (unsigned int id = 0;
++			id < STF_MAX_CAMERAS 
++			&& numCameras < STF_MAX_CAMERAS; ++id) {
++		std::string videoEntiryName;
++		videoEntiryName = getVideoEntityNameById(id);
++		if (videoEntiryName == "unknow")
++			continue;
++
++		std::string sensorEntityName;
++		sensorEntityName = findSensorEntityName(videoEntiryName);
++		if (sensorEntityName == "unknow")
++			continue;
++
++		std::unique_ptr<StarFiveCameraData> data =
++			std::make_unique<StarFiveCameraData>(this, starFiveMediaDev_,
++					videoEntiryName, sensorEntityName);
++
++		/* Locate and open the capture video node. */
++		if (data->init())
++			continue;
++
++		/* Create and register the camera. */
++		LOG(STARFIVE, Debug) << "register deviceName: "
++				     << videoEntiryName;
++		if (data->haveRaw()) {
++			std::set<Stream *> streams{ &data->outStream_,
++						&data->rawStream_ };
++			std::shared_ptr<Camera> camera =
++				Camera::create(std::move(data), videoEntiryName, streams);
++			registerCamera(std::move(camera));
++		} else {
++			std::set<Stream *> streams{ &data->outStream_ };
++			std::shared_ptr<Camera> camera =
++				Camera::create(std::move(data), videoEntiryName, streams);
++			registerCamera(std::move(camera));
++		}
++		numCameras++;
++	}
++
++	return numCameras;
++}
++
++int PipelineHandlerStarFive::enableLinks(std::vector<PipelineConfigLink> config)
++{
++	int ret = 0;
++
++	LOG(STARFIVE, Debug) << __func__;
++	for (PipelineConfigLink it : config) {
++		MediaLink *link = starFiveMediaDev_->link(it.source, 1, it.link, 0);
++		if (!link)
++			return -ENODEV;
++
++		ret = link->setEnabled(true);
++		if (ret < 0)
++			return ret;
++	}
++
++	return ret;
++}
++
++bool PipelineHandlerStarFive::match(DeviceEnumerator *enumerator)
++{
++	int numCameras = 0;
++
++	DeviceMatch dm("stf-vin");
++	dm.add("stf_vin0_wr_video0");
++	dm.add("stf_vin0_isp0_video1");
++	dm.add("stf_vin0_isp1_video2");
++
++	LOG(STARFIVE, Debug) << __func__;
++	starFiveMediaDev_ = acquireMediaDevice(enumerator, dm);
++	if (!starFiveMediaDev_)
++		return false;
++
++	if (starFiveMediaDev_->disableLinks())
++		return false;
++
++	for (SensorConfig it : sensorConfigs) {
++		MediaEntity *sensorEntity =
++			starFiveMediaDev_->getEntityByName(it.sensorEntityName_);
++		int ret;
++
++		if (sensorEntity != nullptr) {
++			if (it.sensorType_ < DVP_YUV
++				|| it.sensorType_ >= SENSORTYPE_MAX)
++				continue;
++			ret = enableLinks(pipelineConfigs[it.sensorType_]);
++			if (ret < 0) {
++				LOG(STARFIVE, Error)
++					<< it.sensorEntityName_
++					<< " enableLinks failed!";
++				continue;
++			}
++		}
++	}
++
++	numCameras = registerCameras();
++	if (numCameras)
++		LOG(STARFIVE, Debug)
++			<< "StarFive " << numCameras
++			<< " Device Identified";
++
++	return numCameras != 0;
++}
++
++void StarFiveCameraData::bufferReady(FrameBuffer *buffer)
++{
++	LOG(STARFIVE, Debug) << __func__;
++	PipelineHandlerStarFive *pipe =
++		static_cast<PipelineHandlerStarFive *>(this->pipe());
++	Request *request = buffer->request();
++
++	if (!pipe->completeBuffer(request, buffer))
++		return;
++
++	pipe->completeRequest(request);
++}
++
++REGISTER_PIPELINE_HANDLER(PipelineHandlerStarFive)
++
++} /* namespace libcamera */
+diff --git a/src/libcamera/v4l2_subdevice.cpp b/src/libcamera/v4l2_subdevice.cpp
+index 023e2328..bc7cbfec 100644
+--- a/src/libcamera/v4l2_subdevice.cpp
++++ b/src/libcamera/v4l2_subdevice.cpp
+@@ -525,4 +525,16 @@ std::vector<SizeRange> V4L2Subdevice::enumPadSizes(unsigned int pad,
+ 	return sizes;
+ }
+ 
++int V4L2Subdevice::ioctlPrivate(unsigned long request, void *argp)
++{
++	/*
++	 * Printing out an error message is usually better performed
++	 * in the caller, which can provide more context.
++	 */
++	if (V4L2Device::ioctl(request, argp) < 0)
++		return -errno;
++
++	return 0;
++}
++
+ } /* namespace libcamera */
+-- 
+2.25.1
+

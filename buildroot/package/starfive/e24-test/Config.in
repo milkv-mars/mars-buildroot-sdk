@@ -1,0 +1,4 @@
+config BR2_PACKAGE_E24_TEST
+	bool "e24-test"
+	help
+	  e24-test package

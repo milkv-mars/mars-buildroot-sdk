@@ -1,0 +1,10 @@
+comment "drm test package"
+
+config BR2_PACKAGE_DRM_TEST
+	bool "drm_test"
+	depends on BR2_PACKAGE_LIBDRM
+	help
+	  Utility for testing drm working on variable modes. This tool based on
+	  https://github.com/dvdhrm/docs.git and 
+	  https://github.com/hexiaolong2008/sample-code.git,
+	  but provides additional features

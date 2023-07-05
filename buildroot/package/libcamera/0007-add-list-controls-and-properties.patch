@@ -1,0 +1,318 @@
+From 5e558d4454fa476cc9e0670a30d631a1174b55a2 Mon Sep 17 00:00:00 2001
+From: sw.multimedia <sw.multimedia@starfivetech.com>
+Date: Tue, 23 Nov 2021 10:44:04 +0800
+Subject: [PATCH 07/10] add list controls and properties
+
+---
+ src/libcamera/pipeline/starfive/starfive.cpp | 219 ++++++++++++++-----
+ 1 file changed, 165 insertions(+), 54 deletions(-)
+
+diff --git a/src/libcamera/pipeline/starfive/starfive.cpp b/src/libcamera/pipeline/starfive/starfive.cpp
+index 58e1f55a..b91a85a4 100644
+--- a/src/libcamera/pipeline/starfive/starfive.cpp
++++ b/src/libcamera/pipeline/starfive/starfive.cpp
+@@ -185,7 +185,9 @@ public:
+ 			delete ispSubDev_;
+ 	}
+ 
+-	int init();
++	int init(MediaDevice *media);
++	void addControl(uint32_t cid, const ControlInfo &v4l2Info,
++				ControlInfoMap::Map *ctrls);
+ 	void bufferReady(FrameBuffer *buffer);
+ 	bool haveRaw() const { return haveRaw_; }
+ 	bool rawActive() const { return rawActive_; }
+@@ -298,7 +300,7 @@ private:
+ 	StarFiveCameraData *data_;
+ };
+ 
+-int StarFiveCameraData::init()
++int StarFiveCameraData::init(MediaDevice *media)
+ {
+ 	int ret;
+ 
+@@ -353,7 +355,38 @@ int StarFiveCameraData::init()
+ 					&StarFiveCameraData::bufferReady);
+ 		}
+ 	}
+-	
++
++	// properties_.set(properties::Location, properties::CameraLocationExternal);
++	properties_.set(properties::Model, utils::toAscii(media->model()));
++
++	/*
++	 * Get the current format in order to initialize the sensor array
++	 * properties.
++	 */
++	Size resolution;
++	for (const auto &it : video_->formats()) {
++		const std::vector<SizeRange> &sizeRanges = it.second;
++		for (const SizeRange &sizeRange : sizeRanges) {
++			if (sizeRange.max > resolution)
++				resolution = sizeRange.max;
++		}
++	}
++
++	properties_.set(properties::PixelArraySize, resolution);
++	properties_.set(properties::PixelArrayActiveAreas, { Rectangle(resolution) });
++
++	/* Initialise the supported controls. */
++	ControlInfoMap::Map ctrls;
++
++	for (const auto &ctrl : sensor_->controls()) {
++		uint32_t cid = ctrl.first->id();
++		const ControlInfo &info = ctrl.second;
++
++		addControl(cid, info, &ctrls);
++	}
++
++	controlInfo_ = ControlInfoMap(std::move(ctrls), controls::controls);
++
+ 	return 0;
+ }
+ 
+@@ -734,97 +767,89 @@ int PipelineHandlerStarFive::processControls(StarFiveCameraData *data, const Con
+ 
+ 	for (auto it : controls) {
+ 		unsigned int id = it.first;
+-		unsigned int offset = 0;
+ 		uint32_t cid = 0;
+ 		int32_t value = 0;
+ 
+ 		switch (id) {
+ 		case controls::BRIGHTNESS:
+ 			cid = V4L2_CID_BRIGHTNESS;
+-			offset = 128;
+-			value = lroundf(it.second.get<float>() * 128 + offset);
+-			LOG(STARFIVE, Debug) << "Brightness controls: " << id
+-				<< ", value: " << value;
+ 			break;
+ 		case controls::CONTRAST:
+ 			cid = V4L2_CID_CONTRAST;
+-			offset = 0;
+-			value = lroundf(it.second.get<float>() * 128 + offset);
+-			LOG(STARFIVE, Debug) << "Contrast controls: " << id
+-				<< ", value: " << value;
+ 			break;
+ 		case controls::SATURATION:
+ 			cid = V4L2_CID_SATURATION;
+-			offset = 0;
+-			value = lroundf(it.second.get<float>() * 128 + offset);
+-			LOG(STARFIVE, Debug) << "Saturation controls: " << id
+-				<< ", value: " << value;
+ 			break;
+ 		case controls::SHARPNESS:
+ 			cid = V4L2_CID_SHARPNESS;
+-			offset = 0;
+-			value = lroundf(it.second.get<float>() * 128 + offset);
+-			LOG(STARFIVE, Debug) << "Sharpness controls: " << id
+-				<< ", value: " << value;
+ 			break;
+ 		case controls::COLOUR_GAINS:
+ 			cid = V4L2_CID_RED_BALANCE;
+-			offset = 0;
+-			value = lroundf(it.second.get<Span<const float>>()[0]);
+-			LOG(STARFIVE, Debug) << "ColourGains controls: " << id
+-				<< ", COLOUR_GAINS RED value: " << value;
+-			if (SensorControlsInfoMap.find(cid) != SensorControlsInfoMap.end())
+-				SensorControls.set(cid, value);
+-			else
+-				LOG(STARFIVE, Debug)
+-					<< "SensorControls not supported controls: " << id;
+-			cid = V4L2_CID_BLUE_BALANCE;
+-			value = lroundf(it.second.get<Span<const float>>()[1]);
+-			LOG(STARFIVE, Debug) << "COLOUR_GAINS BLUE value: " << value;
+ 			break;
+ 		case controls::AWB_ENABLE:
+ 			cid = V4L2_CID_AUTO_WHITE_BALANCE;
+-			value = it.second.get<bool>();
+-			LOG(STARFIVE, Debug) << "AwbMode controls: " << id
+-				<< ", value: " << value;
+ 			break;
+ 		case controls::EXPOSURE_VALUE:
+ 			cid = V4L2_CID_EXPOSURE;
+-			offset = 0;
+-			value = lroundf(it.second.get<float>());
+-			LOG(STARFIVE, Debug) << "ExposureValue controls: " << id
+-				<< ", value: " << value;
+ 			break;
+ 		case controls::AE_ENABLE:
+ 			cid = V4L2_CID_EXPOSURE_AUTO;
+-			value = it.second.get<bool>();
+-			LOG(STARFIVE, Debug) << "AeExposureMode controls: " << id
+-				<< ", value: " << value;
+ 			break;
+ 		case controls::ANALOGUE_GAIN:
+ 			cid = V4L2_CID_ANALOGUE_GAIN;
+-			offset = 0;
+-			value = lroundf(it.second.get<float>());
+-			LOG(STARFIVE, Debug) << "AnalogueGain controls: " << id
+-				<< ", value: " << value;
+ 			break;
+ 		case controls::DIGITAL_GAIN:
+-			cid = V4L2_CID_GAIN;
+-			offset = 0;
+-			value = lroundf(it.second.get<float>());
+-			LOG(STARFIVE, Debug) << "AnalogueGain controls: " << id
+-				<< ", value: " << value;
++			cid = V4L2_CID_DIGITAL_GAIN;
+ 			break;
+ 		default:
+-			LOG(STARFIVE, Debug) << "default controls: " << id;
++			continue;
++		}
++
++		if (SensorControlsInfoMap.find(cid) == SensorControlsInfoMap.end()) {
++			LOG(STARFIVE, Debug) << "SensorControls not supported controls: " << id;
++			continue;
++		}
++
++		const ControlInfo &v4l2Info = SensorControlsInfoMap.at(cid);
++		int32_t min = v4l2Info.min().get<int32_t>();
++		int32_t def = v4l2Info.def().get<int32_t>();
++		int32_t max = v4l2Info.max().get<int32_t>();
++
++		switch (id) {
++		case controls::SATURATION:
++		case controls::SHARPNESS:
++		case controls::CONTRAST:
++		case controls::EXPOSURE_VALUE:
++		case controls::ANALOGUE_GAIN:
++		case controls::DIGITAL_GAIN:
++		case controls::BRIGHTNESS: {
++			value = static_cast<int32_t>(lroundf(it.second.get<float>()));
++			break;
++		}
++		case controls::COLOUR_GAINS: {
++			value = static_cast<int32_t>(lroundf(it.second.get<float>()));
++			LOG(STARFIVE, Debug) << "ColourGains controls: " << id
++				<< ", COLOUR_GAINS RED value: " << value;
++			SensorControls.set(cid, value);
++			cid = V4L2_CID_BLUE_BALANCE;
++			value = static_cast<int32_t>(lroundf(it.second.get<float>()));
++			LOG(STARFIVE, Debug) << "COLOUR_GAINS BLUE value: " << value;
++			break;
++		}
++		case controls::AWB_ENABLE:
++		case controls::AE_ENABLE:
++			value = it.second.get<bool>();
+ 			break;
++		default:
++			LOG(STARFIVE, Debug) << "default controls: " << id;
++			continue;
+ 		}
+ 
++		LOG(STARFIVE, Debug) << "controls: " << id << ", value: " << value;
+ 		if (SensorControlsInfoMap.find(cid) != SensorControlsInfoMap.end())
+ 			SensorControls.set(cid, value);
+ 		else
+ 			LOG(STARFIVE, Debug) << "SensorControls not supported controls: " << id;
+-
+ 	}
+ 
+ 	for (const auto &ctrl : SensorControls)
+@@ -965,7 +990,7 @@ int PipelineHandlerStarFive::registerCameras()
+ 					videoEntiryName, sensorEntityName);
+ 
+ 		/* Locate and open the capture video node. */
+-		if (data->init())
++		if (data->init(starFiveMediaDev_))
+ 			continue;
+ 
+ 		/*create ipa module*/
+@@ -1075,6 +1100,92 @@ void StarFiveCameraData::bufferReady(FrameBuffer *buffer)
+ 	pipe->completeRequest(request);
+ }
+ 
++void StarFiveCameraData::addControl(uint32_t cid, const ControlInfo &v4l2Info,
++				ControlInfoMap::Map *ctrls)
++{
++	const ControlId *id;
++	ControlInfo info;
++
++	LOG(STARFIVE, Debug) << __func__ << " cid: " << utils::hex(cid);
++	/* Map the control ID. */
++	switch (cid) {
++	case V4L2_CID_BRIGHTNESS:
++		id = &controls::Brightness;
++		break;
++	case V4L2_CID_CONTRAST:
++		id = &controls::Contrast;
++		break;
++	case V4L2_CID_SATURATION:
++		id = &controls::Saturation;
++		break;
++	case V4L2_CID_SHARPNESS:
++		id = &controls::Sharpness;
++		break;
++	case V4L2_CID_RED_BALANCE:
++	case V4L2_CID_BLUE_BALANCE:
++		id = &controls::ColourGains;
++		break;
++	case V4L2_CID_AUTO_WHITE_BALANCE:
++		id = &controls::AwbMode;
++		break;
++	case V4L2_CID_EXPOSURE:
++		id = &controls::ExposureValue;
++		break;
++	case V4L2_CID_EXPOSURE_AUTO:
++		id = &controls::AeExposureMode;
++		break;
++	case V4L2_CID_ANALOGUE_GAIN:
++		id = &controls::AnalogueGain;
++		break;
++	case V4L2_CID_DIGITAL_GAIN:
++		id = &controls::DigitalGain;
++		break;
++	default:
++		LOG(STARFIVE, Debug) << __func__ << " unsupport cid: " << utils::hex(cid);
++		return;
++	}
++
++	/* Map the control info. */
++	int32_t min = v4l2Info.min().get<int32_t>();
++	int32_t max = v4l2Info.max().get<int32_t>();
++	int32_t def = v4l2Info.def().get<int32_t>();
++
++	switch (cid) {
++	case V4L2_CID_SATURATION:
++	case V4L2_CID_SHARPNESS:
++	case V4L2_CID_CONTRAST:
++	case V4L2_CID_EXPOSURE:
++	case V4L2_CID_ANALOGUE_GAIN:
++	case V4L2_CID_DIGITAL_GAIN:
++	case V4L2_CID_BRIGHTNESS: {
++		info = ControlInfo{
++			{ static_cast<float>(min) },
++			{ static_cast<float>(max) },
++			{ static_cast<float>(def) },
++		};
++		break;
++	}
++
++	case V4L2_CID_EXPOSURE_AUTO:
++		info = ControlInfo{ false, true, true };
++		break;
++
++	case V4L2_CID_EXPOSURE_ABSOLUTE:
++		info = ControlInfo{
++			{ min * 100 },
++			{ max * 100 },
++			{ def * 100 }
++		};
++		break;
++
++	default:
++		info = v4l2Info;
++		break;
++	}
++
++	ctrls->emplace(id, info);
++}
++
+ REGISTER_PIPELINE_HANDLER(PipelineHandlerStarFive)
+ 
+ } /* namespace libcamera */
+-- 
+2.25.1
+

@@ -1,0 +1,28 @@
+From 5021e32ddc68459c1d96a5ddb8c4225e82023130 Mon Sep 17 00:00:00 2001
+From: "Kevin.xie" <kevin.xie@starfivetech.com>
+Date: Thu, 4 Aug 2022 13:55:56 +0800
+Subject: [PATCH] libcamera-apps: Open drm device by module name 'starfive'
+
+Signed-off-by: Kevin.xie <kevin.xie@starfivetech.com>
+---
+ preview/drm_preview.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/preview/drm_preview.cpp b/preview/drm_preview.cpp
+index a969358..df6bfb5 100644
+--- a/preview/drm_preview.cpp
++++ b/preview/drm_preview.cpp
+@@ -241,8 +241,8 @@ void DrmPreview::findPlane()
+ 
+ DrmPreview::DrmPreview(Options const *options) : Preview(options), last_fd_(-1)
+ {
+-	// drmfd_ = drmOpen("vc4", NULL);
+-	drmfd_ = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
++	drmfd_ = drmOpen("starfive", NULL);
++	// drmfd_ = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
+ 	if (drmfd_ < 0)
+ 		throw std::runtime_error("drmOpen failed: " + std::string(ERRSTR));
+ 
+-- 
+2.17.1
+

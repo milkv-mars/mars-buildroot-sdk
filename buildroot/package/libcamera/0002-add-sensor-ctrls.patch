@@ -1,0 +1,182 @@
+From a3756db6257742587da7e97546aa330ad363bfd1 Mon Sep 17 00:00:00 2001
+From: sw.multimedia <sw.multimedia@starfivetech.com>
+Date: Tue, 26 Oct 2021 12:29:30 +0800
+Subject: [PATCH 02/10] add sensor ctrls
+
+---
+ src/libcamera/pipeline/starfive/starfive.cpp | 118 ++++++++++++++++---
+ 1 file changed, 99 insertions(+), 19 deletions(-)
+
+diff --git a/src/libcamera/pipeline/starfive/starfive.cpp b/src/libcamera/pipeline/starfive/starfive.cpp
+index 8797bdcb..f63af910 100644
+--- a/src/libcamera/pipeline/starfive/starfive.cpp
++++ b/src/libcamera/pipeline/starfive/starfive.cpp
+@@ -370,7 +370,7 @@ public:
+ 	bool match(DeviceEnumerator *enumerator) override;
+ 
+ private:
+-	int processControls(StarFiveCameraData *data, Request *request);
++	int processControls(StarFiveCameraData *data, const ControlList &controls);
+ 
+ 	StarFiveCameraData *cameraData(Camera *camera)
+ 	{
+@@ -620,6 +620,13 @@ int PipelineHandlerStarFive::start(Camera *camera, const ControlList *controls)
+ 	
+ 	LOG(STARFIVE, Debug) << __func__ << " bufferCount: " << count;
+ 
++	if (controls != nullptr) {
++		ret = processControls(data, *controls);
++		if (ret < 0)
++			return ret;
++	} else
++		LOG(STARFIVE, Debug) << __func__ << " start no controls";
++
+ 	ret = data->video_->importBuffers(count);
+ 	if (ret < 0)
+ 		return ret;
+@@ -672,43 +679,116 @@ void PipelineHandlerStarFive::stop(Camera *camera)
+ 	}
+ }
+ 
+-int PipelineHandlerStarFive::processControls(StarFiveCameraData *data, Request *request)
++int PipelineHandlerStarFive::processControls(StarFiveCameraData *data, const ControlList &controls)
+ {
+-	LOG(STARFIVE, Debug) << __func__;
++	LOG(STARFIVE, Debug) << __func__ << ": test1 controls";
++	const ControlInfoMap &SensorControlsInfoMap = data->sensor_->controls();
++	ControlList SensorControls(SensorControlsInfoMap);
+ 
+-	ControlList controls(data->sensor_->controls());
+-
+-	for (auto it : request->controls()) {
++	for (auto it : controls) {
+ 		unsigned int id = it.first;
+-		unsigned int offset;
+-		uint32_t cid;
++		unsigned int offset = 0;
++		uint32_t cid = 0;
++		int32_t value = 0;
+ 
+-		if (id == controls::Brightness) {
++		switch (id) {
++		case controls::BRIGHTNESS:
+ 			cid = V4L2_CID_BRIGHTNESS;
+ 			offset = 128;
+-		} else if (id == controls::Contrast) {
++			value = lroundf(it.second.get<float>() * 128 + offset);
++			LOG(STARFIVE, Debug) << "Brightness controls: " << id
++				<< ", value: " << value;
++			break;
++		case controls::CONTRAST:
+ 			cid = V4L2_CID_CONTRAST;
+ 			offset = 0;
+-		} else if (id == controls::Saturation) {
++			value = lroundf(it.second.get<float>() * 128 + offset);
++			LOG(STARFIVE, Debug) << "Contrast controls: " << id
++				<< ", value: " << value;
++			break;
++		case controls::SATURATION:
+ 			cid = V4L2_CID_SATURATION;
+ 			offset = 0;
+-		} else {
+-			continue;
++			value = lroundf(it.second.get<float>() * 128 + offset);
++			LOG(STARFIVE, Debug) << "Saturation controls: " << id
++				<< ", value: " << value;
++			break;
++		case controls::SHARPNESS:
++			cid = V4L2_CID_SHARPNESS;
++			offset = 0;
++			value = lroundf(it.second.get<float>() * 128 + offset);
++			LOG(STARFIVE, Debug) << "Sharpness controls: " << id
++				<< ", value: " << value;
++			break;
++		case controls::COLOUR_GAINS:
++			cid = V4L2_CID_RED_BALANCE;
++			offset = 0;
++			value = lroundf(it.second.get<Span<const float>>()[0]);
++			LOG(STARFIVE, Debug) << "ColourGains controls: " << id
++				<< ", COLOUR_GAINS RED value: " << value;
++			if (SensorControlsInfoMap.find(cid) != SensorControlsInfoMap.end())
++				SensorControls.set(cid, value);
++			else
++				LOG(STARFIVE, Debug)
++					<< "SensorControls not supported controls: " << id;
++			cid = V4L2_CID_BLUE_BALANCE;
++			value = lroundf(it.second.get<Span<const float>>()[1]);
++			LOG(STARFIVE, Debug) << "COLOUR_GAINS BLUE value: " << value;
++			break;
++		case controls::AWB_ENABLE:
++			cid = V4L2_CID_AUTO_WHITE_BALANCE;
++			value = it.second.get<bool>();
++			LOG(STARFIVE, Debug) << "AwbMode controls: " << id
++				<< ", value: " << value;
++			break;
++		case controls::EXPOSURE_VALUE:
++			cid = V4L2_CID_EXPOSURE;
++			offset = 0;
++			value = lroundf(it.second.get<float>());
++			LOG(STARFIVE, Debug) << "ExposureValue controls: " << id
++				<< ", value: " << value;
++			break;
++		case controls::AE_ENABLE:
++			cid = V4L2_CID_EXPOSURE_AUTO;
++			value = it.second.get<bool>();
++			LOG(STARFIVE, Debug) << "AeExposureMode controls: " << id
++				<< ", value: " << value;
++			break;
++		case controls::ANALOGUE_GAIN:
++			cid = V4L2_CID_ANALOGUE_GAIN;
++			offset = 0;
++			value = lroundf(it.second.get<float>());
++			LOG(STARFIVE, Debug) << "AnalogueGain controls: " << id
++				<< ", value: " << value;
++			break;
++		case controls::DIGITAL_GAIN:
++			cid = V4L2_CID_GAIN;
++			offset = 0;
++			value = lroundf(it.second.get<float>());
++			LOG(STARFIVE, Debug) << "AnalogueGain controls: " << id
++				<< ", value: " << value;
++			break;
++		default:
++			LOG(STARFIVE, Debug) << "default controls: " << id;
++			break;
+ 		}
+ 
+-		int32_t value = lroundf(it.second.get<float>() * 128 + offset);
+-		controls.set(cid, std::clamp(value, 0, 255));
++		if (SensorControlsInfoMap.find(cid) != SensorControlsInfoMap.end())
++			SensorControls.set(cid, value);
++		else
++			LOG(STARFIVE, Debug) << "SensorControls not supported controls: " << id;
++
+ 	}
+ 
+-	for (const auto &ctrl : controls)
++	for (const auto &ctrl : SensorControls)
+ 		LOG(STARFIVE, Debug)
+ 			<< "Setting control " << utils::hex(ctrl.first)
+ 			<< " to " << ctrl.second.toString();
+ 
+-	int ret = data->sensor_->setControls(&controls);
++	int ret = data->sensor_->setControls(&SensorControls);
+ 	if (ret) {
+ 		LOG(STARFIVE, Debug)
+-			<< "Failed to set controls: " << ret;
++			<< "Failed to set sensor controls: " << ret;
+ 		return ret < 0 ? ret : -EINVAL;
+ 	}
+ 
+@@ -721,7 +801,7 @@ int PipelineHandlerStarFive::queueRequestDevice(Camera *camera, Request *request
+ 	int error = 0;
+ 
+ 	LOG(STARFIVE, Debug) << __func__;
+-	int ret = processControls(data, request);
++	int ret = processControls(data, request->controls());
+ 	if (ret < 0)
+ 		return ret;
+ 
+-- 
+2.25.1
+

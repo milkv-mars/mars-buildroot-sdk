@@ -1,0 +1,537 @@
+From 26127511bf0b6d2f016c16956d04332858bd8d7f Mon Sep 17 00:00:00 2001
+From: sw.multimedia <sw.multimedia@starfivetech.com>
+Date: Thu, 13 Jan 2022 13:52:11 +0800
+Subject: [PATCH 03/10] libcamera: 1. add caps for src templ            2. add
+ starfive ipa (dummy)
+
+---
+ include/libcamera/ipa/meson.build            |   1 +
+ include/libcamera/ipa/starfive.mojom         |  45 +++++
+ meson_options.txt                            |   2 +-
+ src/gstreamer/gstlibcamerasrc.cpp            |  11 +-
+ src/ipa/starfive/data/meson.build            |   8 +
+ src/ipa/starfive/data/starfive.conf          |   3 +
+ src/ipa/starfive/meson.build                 |  23 +++
+ src/ipa/starfive/starfive.cpp                | 200 +++++++++++++++++++
+ src/libcamera/ipa_manager.cpp                |   4 +-
+ src/libcamera/pipeline/starfive/starfive.cpp |  56 +++++-
+ src/meson.build                              |   1 +
+ 11 files changed, 350 insertions(+), 4 deletions(-)
+ create mode 100644 include/libcamera/ipa/starfive.mojom
+ create mode 100644 src/ipa/starfive/data/meson.build
+ create mode 100644 src/ipa/starfive/data/starfive.conf
+ create mode 100644 src/ipa/starfive/meson.build
+ create mode 100644 src/ipa/starfive/starfive.cpp
+
+diff --git a/include/libcamera/ipa/meson.build b/include/libcamera/ipa/meson.build
+index 6ea94fb5..b84358a6 100644
+--- a/include/libcamera/ipa/meson.build
++++ b/include/libcamera/ipa/meson.build
+@@ -65,6 +65,7 @@ ipa_mojom_files = [
+     'raspberrypi.mojom',
+     'rkisp1.mojom',
+     'vimc.mojom',
++	'starfive.mojom',
+ ]
+ 
+ ipa_mojoms = []
+diff --git a/include/libcamera/ipa/starfive.mojom b/include/libcamera/ipa/starfive.mojom
+new file mode 100644
+index 00000000..b302b609
+--- /dev/null
++++ b/include/libcamera/ipa/starfive.mojom
+@@ -0,0 +1,45 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++
++/*
++ * \todo Document the interface and remove the related EXCLUDE_PATTERNS entry.
++ */
++
++module ipa.starfive;
++
++import "include/libcamera/ipa/core.mojom";
++
++const string StarfiveIPAFIFOPath = "/tmp/libcamera_ipa_starfive_fifo";
++
++enum IPAOperationCode {
++	IPAOperationNone,
++	IPAOperationInit,
++	IPAOperationStart,
++	IPAOperationStop,
++};
++
++interface IPAStarfiveInterface {
++	init(libcamera.IPASettings settings) => (int32 ret);
++
++	configure(libcamera.IPACameraSensorInfo sensorInfo,
++		  map<uint32, libcamera.IPAStream> streamConfig,
++		  map<uint32, libcamera.ControlInfoMap> entityControls) => (int32 ret);
++
++	start() => (int32 ret);
++	stop();
++
++	mapBuffers(array<libcamera.IPABuffer> buffers);
++	unmapBuffers(array<uint32> ids);
++
++	/*
++	 * The starfive driver doesn't use parameters buffers. To maximize coverage
++	 * of unit tests that rely on the starfive pipeline handler, we still define
++	 * interface functions that mimick how other pipeline handlers typically
++	 * handle parameters at runtime.
++	 */
++	[async] fillParams(uint32 frame, uint32 bufferId);
++	[async] processControls(uint32 frame, libcamera.ControlList controls);
++};
++
++interface IPAStarfiveEventInterface {
++	paramsFilled(uint32 bufferId);
++};
+diff --git a/meson_options.txt b/meson_options.txt
+index 14baa7ef..ba4ecb0b 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -27,7 +27,7 @@ option('gstreamer',
+ 
+ option('ipas',
+         type : 'array',
+-        choices : ['ipu3', 'raspberrypi', 'rkisp1', 'vimc'],
++        choices : ['ipu3', 'raspberrypi', 'rkisp1', 'vimc' ,'starfive'],
+         description : 'Select which IPA modules to build')
+ 
+ option('lc-compliance',
+diff --git a/src/gstreamer/gstlibcamerasrc.cpp b/src/gstreamer/gstlibcamerasrc.cpp
+index 1dd0e807..6329b01a 100644
+--- a/src/gstreamer/gstlibcamerasrc.cpp
++++ b/src/gstreamer/gstlibcamerasrc.cpp
+@@ -140,9 +140,18 @@ G_DEFINE_TYPE_WITH_CODE(GstLibcameraSrc, gst_libcamera_src, GST_TYPE_ELEMENT,
+ 
+ #define TEMPLATE_CAPS GST_STATIC_CAPS("video/x-raw; image/jpeg")
+ 
++#define TEMPLATE_CAPS_SRC GST_STATIC_CAPS("video/x-raw, "\
++		"format = { (string)BG24,(string)RG24,(string)BA24, \
++			(string)NV12, (string)NV21, (string)NV16, \
++			(string)NV61, (string)NV24, (string)UYVY, \
++			(string)VYUY, (string)YUYV, (string)YVYU}, "\
++			"width = " GST_VIDEO_SIZE_RANGE ", "\
++			"height = " GST_VIDEO_SIZE_RANGE ", "\
++			"framerate = " GST_VIDEO_FPS_RANGE ";"\
++)
+ /* For the simple case, we have a src pad that is always present. */
+ GstStaticPadTemplate src_template = {
+-	"src", GST_PAD_SRC, GST_PAD_ALWAYS, TEMPLATE_CAPS
++	"src", GST_PAD_SRC, GST_PAD_ALWAYS, TEMPLATE_CAPS_SRC
+ };
+ 
+ /* More pads can be requested in state < PAUSED */
+diff --git a/src/ipa/starfive/data/meson.build b/src/ipa/starfive/data/meson.build
+new file mode 100644
+index 00000000..0ce6a9b4
+--- /dev/null
++++ b/src/ipa/starfive/data/meson.build
+@@ -0,0 +1,8 @@
++# SPDX-License-Identifier: CC0-1.0
++
++conf_files = files([
++    'starfive.conf',
++])
++
++install_data(conf_files,
++             install_dir : ipa_data_dir / 'starfive')
+diff --git a/src/ipa/starfive/data/starfive.conf b/src/ipa/starfive/data/starfive.conf
+new file mode 100644
+index 00000000..6b74f622
+--- /dev/null
++++ b/src/ipa/starfive/data/starfive.conf
+@@ -0,0 +1,3 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++#
++# Dummy configuration file for the starfive IPA.
+diff --git a/src/ipa/starfive/meson.build b/src/ipa/starfive/meson.build
+new file mode 100644
+index 00000000..c93bd058
+--- /dev/null
++++ b/src/ipa/starfive/meson.build
+@@ -0,0 +1,23 @@
++# SPDX-License-Identifier: CC0-1.0
++
++ipa_name = 'ipa_starfive'
++
++mod = shared_module(ipa_name,
++                    ['starfive.cpp', libcamera_generated_ipa_headers],
++                    name_prefix : '',
++                    include_directories : [ipa_includes, libipa_includes],
++                    dependencies : libcamera_private,
++                    link_with : libipa,
++                    install : true,
++                    install_dir : ipa_install_dir)
++
++if ipa_sign_module
++    custom_target(ipa_name + '.so.sign',
++                  input : mod,
++                  output : ipa_name + '.so.sign',
++                  command : [ipa_sign, ipa_priv_key, '@INPUT@', '@OUTPUT@'],
++                  install : false,
++                  build_by_default : true)
++endif
++
++subdir('data')
+diff --git a/src/ipa/starfive/starfive.cpp b/src/ipa/starfive/starfive.cpp
+new file mode 100644
+index 00000000..e1207606
+--- /dev/null
++++ b/src/ipa/starfive/starfive.cpp
+@@ -0,0 +1,200 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/*
++ * Copyright (C) 2019, Google Inc.
++ *
++ * ipa_starfive.cpp - Starfive Image Processing Algorithm module
++ */
++#include <libcamera/ipa/starfive_ipa_interface.h>
++
++#include <fcntl.h>
++#include <string.h>
++#include <sys/stat.h>
++#include <unistd.h>
++
++#include <iostream>
++
++#include <libcamera/base/file.h>
++#include <libcamera/base/log.h>
++
++#include <libcamera/ipa/ipa_interface.h>
++#include <libcamera/ipa/ipa_module_info.h>
++
++#include "libcamera/internal/mapped_framebuffer.h"
++
++namespace libcamera {
++
++LOG_DEFINE_CATEGORY(IPAStarfive)
++
++class IPAStarfive : public ipa::starfive::IPAStarfiveInterface
++{
++public:
++	IPAStarfive();
++	~IPAStarfive();
++
++	int init(const IPASettings &settings) override;
++
++	int start() override;
++	void stop() override;
++
++	int configure(const IPACameraSensorInfo &sensorInfo,
++		      const std::map<unsigned int, IPAStream> &streamConfig,
++		      const std::map<unsigned int, ControlInfoMap> &entityControls) override;
++
++	void mapBuffers(const std::vector<IPABuffer> &buffers) override;
++	void unmapBuffers(const std::vector<unsigned int> &ids) override;
++
++	void fillParams(uint32_t frame, uint32_t bufferId) override;
++	void processControls(uint32_t frame, const ControlList &controls) override;
++
++private:
++	void initTrace();
++	void trace(enum ipa::starfive::IPAOperationCode operation);
++
++	int fd_;
++	std::map<unsigned int, MappedFrameBuffer> buffers_;
++};
++
++IPAStarfive::IPAStarfive()
++	: fd_(-1)
++{
++	initTrace();
++}
++
++IPAStarfive::~IPAStarfive()
++{
++	if (fd_ != -1)
++		::close(fd_);
++}
++
++int IPAStarfive::init(const IPASettings &settings)
++{
++	trace(ipa::starfive::IPAOperationInit);
++
++	LOG(IPAStarfive, Debug)
++		<< "initializing starfive IPA with configuration file "
++		<< settings.configurationFile;
++
++	File conf(settings.configurationFile);
++	if (!conf.open(File::OpenModeFlag::ReadOnly)) {
++		LOG(IPAStarfive, Error) << "Failed to open configuration file";
++		return -EINVAL;
++	}
++
++	return 0;
++}
++
++int IPAStarfive::start()
++{
++	trace(ipa::starfive::IPAOperationStart);
++
++	LOG(IPAStarfive, Debug) << "start starfive IPA!";
++
++	return 0;
++}
++
++void IPAStarfive::stop()
++{
++	trace(ipa::starfive::IPAOperationStop);
++
++	LOG(IPAStarfive, Debug) << "stop starfive IPA!";
++}
++
++int IPAStarfive::configure([[maybe_unused]] const IPACameraSensorInfo &sensorInfo,
++			[[maybe_unused]] const std::map<unsigned int, IPAStream> &streamConfig,
++			[[maybe_unused]] const std::map<unsigned int, ControlInfoMap> &entityControls)
++{
++	LOG(IPAStarfive, Debug) << "configure()";
++
++	return 0;
++}
++
++void IPAStarfive::mapBuffers(const std::vector<IPABuffer> &buffers)
++{
++	LOG(IPAStarfive, Debug) << "mapBuffers()";
++	for (const IPABuffer &buffer : buffers) {
++		const FrameBuffer fb(buffer.planes);
++		buffers_.emplace(std::piecewise_construct,
++				 std::forward_as_tuple(buffer.id),
++				 std::forward_as_tuple(&fb, MappedFrameBuffer::MapFlag::Read));
++	}
++}
++
++void IPAStarfive::unmapBuffers(const std::vector<unsigned int> &ids)
++{
++	LOG(IPAStarfive, Debug) << "unmapBuffers()";
++	for (unsigned int id : ids) {
++		auto it = buffers_.find(id);
++		if (it == buffers_.end())
++			continue;
++
++		buffers_.erase(it);
++	}
++}
++
++void IPAStarfive::fillParams([[maybe_unused]] uint32_t frame, uint32_t bufferId)
++{
++	auto it = buffers_.find(bufferId);
++	if (it == buffers_.end()) {
++		LOG(IPAStarfive, Error) << "Could not find parameter buffer";
++		return;
++	}
++
++	paramsFilled.emit(bufferId);
++}
++
++void IPAStarfive::processControls([[maybe_unused]] uint32_t frame,
++			      [[maybe_unused]] const ControlList &controls)
++{
++	LOG(IPAStarfive,Debug) << "IPA ProcessControl";
++}
++
++void IPAStarfive::initTrace()
++{
++	struct stat fifoStat;
++	int ret = stat(ipa::starfive::StarfiveIPAFIFOPath.c_str(), &fifoStat);
++	if (ret)
++		return;
++
++	ret = ::open(ipa::starfive::StarfiveIPAFIFOPath.c_str(), O_WRONLY);
++	if (ret < 0) {
++		ret = errno;
++		LOG(IPAStarfive, Error) << "Failed to open starfive IPA test FIFO: "
++				    << strerror(ret);
++		return;
++	}
++
++	fd_ = ret;
++}
++
++void IPAStarfive::trace(enum ipa::starfive::IPAOperationCode operation)
++{
++	if (fd_ < 0)
++		return;
++
++	int ret = ::write(fd_, &operation, sizeof(operation));
++	if (ret < 0) {
++		ret = errno;
++		LOG(IPAStarfive, Error) << "Failed to write to starfive IPA test FIFO: "
++				    << strerror(ret);
++	}
++}
++
++/*
++ * External IPA module interface
++ */
++
++extern "C" {
++const struct IPAModuleInfo ipaModuleInfo = {
++	IPA_MODULE_API_VERSION,
++	0,
++	"PipelineHandlerStarFive",
++	"starfive",
++};
++
++IPAInterface *ipaCreate()
++{
++	return new IPAStarfive();
++}
++}
++
++} /* namespace libcamera */
+diff --git a/src/libcamera/ipa_manager.cpp b/src/libcamera/ipa_manager.cpp
+index ec966045..634cbb8d 100644
+--- a/src/libcamera/ipa_manager.cpp
++++ b/src/libcamera/ipa_manager.cpp
+@@ -276,7 +276,9 @@ IPAModule *IPAManager::module(PipelineHandler *pipe, uint32_t minVersion,
+ 
+ bool IPAManager::isSignatureValid([[maybe_unused]] IPAModule *ipa) const
+ {
+-#if HAVE_IPA_PUBKEY
++#if SKIP_SIGN_VERIFY
++	return true;
++#elif HAVE_IPA_PUBKEY
+ 	char *force = utils::secure_getenv("LIBCAMERA_IPA_FORCE_ISOLATION");
+ 	if (force && force[0] != '\0') {
+ 		LOG(IPAManager, Debug)
+diff --git a/src/libcamera/pipeline/starfive/starfive.cpp b/src/libcamera/pipeline/starfive/starfive.cpp
+index f63af910..bc82a062 100644
+--- a/src/libcamera/pipeline/starfive/starfive.cpp
++++ b/src/libcamera/pipeline/starfive/starfive.cpp
+@@ -23,6 +23,10 @@
+ #include <linux/videodev2.h>
+ #include <linux/v4l2-subdev.h>
+ 
++#include <libcamera/ipa/ipa_interface.h>
++#include <libcamera/ipa/ipa_module_info.h>
++#include <libcamera/ipa/starfive_ipa_interface.h>
++#include <libcamera/ipa/starfive_ipa_proxy.h>
+ #include "libcamera/internal/camera.h"
+ #include "libcamera/internal/camera_sensor.h"
+ #include "libcamera/internal/device_enumerator.h"
+@@ -189,6 +193,7 @@ public:
+ 	std::vector<SizeRange> sensorSizes() const;
+ 	std::vector<PixelFormat> sensorFormats() const;
+ 	std::vector<PixelFormat> videoFormats() const;
++	void paramsFilled(unsigned int id){}
+ 
+ 	MediaDevice *media_;
+ 	V4L2VideoDevice *video_;
+@@ -197,6 +202,8 @@ public:
+ 	CameraSensor *sensor_;
+ 	Stream outStream_;
+ 	Stream rawStream_;
++	std::unique_ptr<ipa::starfive::IPAProxyStarfive> ipa_;
++	std::vector<std::unique_ptr<FrameBuffer>> mockIPABufs_;
+ 
+ private:
+ 	bool haveRaw_;
+@@ -591,6 +598,22 @@ int PipelineHandlerStarFive::configure(Camera *camera, CameraConfiguration *c)
+ 			    data->video_->toV4L2PixelFormat(cfg.pixelFormat))
+ 				return -EINVAL;
+ 		}
++
++		if (data->ipa_) {
++		/* Inform IPA of stream configuration and sensor controls. */
++		std::map<unsigned int, IPAStream> streamConfig;
++		streamConfig.emplace(std::piecewise_construct,
++					std::forward_as_tuple(0),
++					std::forward_as_tuple(cfg.pixelFormat, cfg.size));
++
++		std::map<unsigned int, ControlInfoMap> entityControls;
++		entityControls.emplace(0, data->sensor_->controls());
++
++		IPACameraSensorInfo sensorInfo;
++		data->sensor_->sensorInfo(&sensorInfo);
++
++		data->ipa_->configure(sensorInfo, streamConfig, entityControls);
++		}
+ 	}
+ 
+ 	return 0;
+@@ -630,6 +653,17 @@ int PipelineHandlerStarFive::start(Camera *camera, const ControlList *controls)
+ 	ret = data->video_->importBuffers(count);
+ 	if (ret < 0)
+ 		return ret;
++	
++	/* Map the mock IPA buffers to VIMC IPA to exercise IPC code paths. */
++	std::vector<IPABuffer> ipaBuffers;
++	for (auto [i, buffer] : utils::enumerate(data->mockIPABufs_)) {
++		buffer->setCookie(i + 1);
++		ipaBuffers.emplace_back(buffer->cookie(), buffer->planes());
++	}
++	data->ipa_->mapBuffers(ipaBuffers);
++	ret = data->ipa_->start();
++	if(ret < 0)
++		goto error;
+ 
+ 	ret = data->video_->streamOn();
+ 	if (ret < 0)
+@@ -661,6 +695,7 @@ int PipelineHandlerStarFive::start(Camera *camera, const ControlList *controls)
+ 
+ 	return ret;
+ error:
++	data->ipa_->stop();
+ 	data->video_->releaseBuffers();
+ 	return ret;
+ }
+@@ -671,6 +706,12 @@ void PipelineHandlerStarFive::stop(Camera *camera)
+ 
+ 	StarFiveCameraData *data = cameraData(camera);
+ 	data->video_->streamOff();
++	std::vector<unsigned int> ids;
++	for (const std::unique_ptr<FrameBuffer> &buffer : data->mockIPABufs_)
++		ids.push_back(buffer->cookie());
++	data->ipa_->unmapBuffers(ids);
++	data->ipa_->stop();
++
+ 	data->video_->releaseBuffers();
+ 	if (data->rawActive()) {
+ 		data->raw_->streamOff();
+@@ -813,8 +854,11 @@ int PipelineHandlerStarFive::queueRequestDevice(Camera *camera, Request *request
+ 		LOG(STARFIVE, Debug)
+ 			<< "stream queueBuffer : " << stream->configuration().toString();
+ 
+-		if (stream == &data->outStream_)
++		if (stream == &data->outStream_){
+ 			ret = data->video_->queueBuffer(buffer);
++			data->ipa_->processControls(request->sequence(), request->controls());
++		}
++
+ 		else if (stream == &data->rawStream_)
+ 			ret = data->raw_->queueBuffer(buffer);
+ 		else
+@@ -918,6 +962,16 @@ int PipelineHandlerStarFive::registerCameras()
+ 		if (data->init())
+ 			continue;
+ 
++		/*create ipa module*/
++		data->ipa_ = IPAManager::createIPA<ipa::starfive::IPAProxyStarfive>(this, 0, 0);
++		if (!data->ipa_) {
++			LOG(STARFIVE, Error) << "no matching IPA found";
++			return false;
++		}
++		data->ipa_->paramsFilled.connect(data.get(), &StarFiveCameraData::paramsFilled);
++		std::string conf = data->ipa_->configurationFile("starfive.conf");
++		data->ipa_->init(IPASettings{ conf, data->sensor_->model() });
++
+ 		/* Create and register the camera. */
+ 		LOG(STARFIVE, Debug) << "register deviceName: "
+ 				     << videoEntiryName;
+diff --git a/src/meson.build b/src/meson.build
+index e0ea9c35..8ae89b5b 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -20,6 +20,7 @@ if openssl.found()
+                                  output : ['ipa-priv-key.pem'],
+                                  command : [gen_ipa_priv_key, '@OUTPUT@'])
+     config_h.set('HAVE_IPA_PUBKEY', 1)
++    config_h.set('SKIP_SIGN_VERIFY',1)
+     ipa_sign_module = true
+ else
+     ipa_sign_module = false
+-- 
+2.25.1
+

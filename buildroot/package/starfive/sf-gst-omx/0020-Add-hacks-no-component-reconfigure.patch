@@ -1,0 +1,51 @@
+Add hacks of no-component-reconfigure, component needs to be re-created if the caps change.
+
+Signed-off-by: Som Qin <som.qin@starfivetech.com>
+
+diff --git a/config/stf/gstomx.conf b/config/stf/gstomx.conf
+index 0d20b00..325fe29 100644
+--- a/config/stf/gstomx.conf
++++ b/config/stf/gstomx.conf
+@@ -5,7 +5,7 @@ component-name=OMX.sf.video_decoder.hevc.internal
+ in-port-index=0
+ out-port-index=1
+ rank=257
+-hacks=pass-profile-to-decoder;pass-color-format-to-decoder;ensure-buffer-count-actual
++hacks=pass-profile-to-decoder;pass-color-format-to-decoder;ensure-buffer-count-actual;no-component-reconfigure
+ 
+ [omxh264dec]
+ type-name=GstOMXH264Dec
+@@ -14,7 +14,7 @@ component-name=OMX.sf.video_decoder.avc.internal
+ in-port-index=0
+ out-port-index=1
+ rank=257
+-hacks=pass-profile-to-decoder;pass-color-format-to-decoder;ensure-buffer-count-actual
++hacks=pass-profile-to-decoder;pass-color-format-to-decoder;ensure-buffer-count-actual;no-component-reconfigure
+ 
+ [omxh265enc]
+ type-name=GstOMXH265Enc
+@@ -23,7 +23,7 @@ component-name=OMX.sf.video_encoder.hevc
+ in-port-index=0
+ out-port-index=1
+ rank=1
+-hacks=pass-profile-to-decoder;pass-color-format-to-decoder;ensure-buffer-count-actual;video-framerate-integer
++hacks=pass-profile-to-decoder;pass-color-format-to-decoder;ensure-buffer-count-actual;video-framerate-integer;no-component-reconfigure
+ 
+ [omxh264enc]
+ type-name=GstOMXH264Enc
+@@ -32,7 +32,7 @@ component-name=OMX.sf.video_encoder.avc
+ in-port-index=0
+ out-port-index=1
+ rank=1
+-hacks=pass-profile-to-decoder;pass-color-format-to-decoder;ensure-buffer-count-actual;video-framerate-integer
++hacks=pass-profile-to-decoder;pass-color-format-to-decoder;ensure-buffer-count-actual;video-framerate-integer;no-component-reconfigure
+ 
+ [omxmjpegdec]
+ type-name=GstOMXMJPEGDec
+@@ -41,5 +41,5 @@ component-name=OMX.sf.video_decoder.mjpeg.internal
+ in-port-index=0
+ out-port-index=1
+ rank=1
+-hacks=pass-profile-to-decoder;pass-color-format-to-decoder;ensure-buffer-count-actual
++hacks=pass-profile-to-decoder;pass-color-format-to-decoder;ensure-buffer-count-actual;no-component-reconfigure
+ src-template-caps=video/x-raw, format = (string) { NV16_10LE32, NV12_10LE32, NV16, NV61, YUY2, YVYU, UYVY, NV12, NV21, I420, RGB16, BGR16, ABGR, ARGB, GRAY8, Y42B, Y444, VYUY, v308 }, width = (int) [ 1, max ], height = (int) [ 1, max ], framerate = (fraction) [ 0, max ]

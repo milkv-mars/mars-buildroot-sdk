@@ -1,0 +1,153 @@
+From 30ce74f6cc34ddb310cee72280d9e1e00aa4e459 Mon Sep 17 00:00:00 2001
+From: sw.multimedia <sw.multimedia@starfivetech.com>
+Date: Thu, 25 Nov 2021 14:57:09 +0800
+Subject: [PATCH] add DrmPreview support NV12 display
+
+---
+ preview/drm_preview.cpp | 84 +++++++++++++++++++++++++++++++++++------
+ 1 file changed, 73 insertions(+), 11 deletions(-)
+
+diff --git a/preview/drm_preview.cpp b/preview/drm_preview.cpp
+index c444918..a969358 100644
+--- a/preview/drm_preview.cpp
++++ b/preview/drm_preview.cpp
+@@ -10,6 +10,8 @@
+ #include <drm_mode.h>
+ #include <xf86drm.h>
+ #include <xf86drmMode.h>
++#include <fcntl.h>
++#include <libcamera/formats.h>
+ 
+ #include "core/options.hpp"
+ 
+@@ -50,6 +52,7 @@ private:
+ 	void findPlane();
+ 	int drmfd_;
+ 	int conId_;
++	drmModeConnector *con_;
+ 	uint32_t crtcId_;
+ 	int crtcIdx_;
+ 	uint32_t planeId_;
+@@ -95,10 +98,19 @@ void DrmPreview::findCrtc()
+ 			if (con->encoder_id)
+ 			{
+ 				enc = drmModeGetEncoder(drmfd_, con->encoder_id);
+-				if (enc->crtc_id)
+-				{
+-					crtc = drmModeGetCrtc(drmfd_, enc->crtc_id);
+-				}
++			}
++			else
++			{
++				enc = drmModeGetEncoder(drmfd_, con->encoders[0]);
++			}
++
++			if (enc->crtc_id)
++			{
++				crtc = drmModeGetCrtc(drmfd_, enc->crtc_id);
++			}
++			else
++			{
++				crtc = drmModeGetCrtc(drmfd_, res->crtcs[0]);
+ 			}
+ 
+ 			if (!conId_ && crtc)
+@@ -161,6 +173,8 @@ void DrmPreview::findCrtc()
+ 		throw std::runtime_error("connector supports no mode");
+ 	}
+ 
++	con_ = c;
++
+ 	if (options_->fullscreen || width_ == 0 || height_ == 0)
+ 	{
+ 		drmModeCrtc *crtc = drmModeGetCrtc(drmfd_, crtcId_);
+@@ -227,10 +241,13 @@ void DrmPreview::findPlane()
+ 
+ DrmPreview::DrmPreview(Options const *options) : Preview(options), last_fd_(-1)
+ {
+-	drmfd_ = drmOpen("vc4", NULL);
++	// drmfd_ = drmOpen("vc4", NULL);
++	drmfd_ = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
+ 	if (drmfd_ < 0)
+ 		throw std::runtime_error("drmOpen failed: " + std::string(ERRSTR));
+ 
++	drmSetClientCap(drmfd_, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
++
+ 	x_ = options_->preview_x;
+ 	y_ = options_->preview_y;
+ 	width_ = options_->preview_width;
+@@ -245,7 +262,12 @@ DrmPreview::DrmPreview(Options const *options) : Preview(options), last_fd_(-1)
+ 
+ 		conId_ = 0;
+ 		findCrtc();
+-		out_fourcc_ = DRM_FORMAT_YUV420;
++		if (options_->pixelformat.length()) {
++			libcamera::PixelFormat pixelFormat =
++				libcamera::PixelFormat::fromString(options_->pixelformat);
++			out_fourcc_ = pixelFormat.fourcc();
++		} else
++			out_fourcc_ = DRM_FORMAT_YUV420;
+ 		findPlane();
+ 	}
+ 	catch (std::exception const &e)
+@@ -281,12 +303,52 @@ void DrmPreview::makeBuffer(int fd, size_t size, unsigned int width, unsigned in
+ 	if (drmPrimeFDToHandle(drmfd_, fd, &buffer.bo_handle))
+ 		throw std::runtime_error("drmPrimeFDToHandle failed for fd " + std::to_string(fd));
+ 
+-	uint32_t offsets[4] = { 0, stride * height, stride * height + (stride / 2) * (height / 2) };
+-	uint32_t pitches[4] = { stride, stride / 2, stride / 2 };
+-	uint32_t bo_handles[4] = { buffer.bo_handle, buffer.bo_handle, buffer.bo_handle };
+-
+-	if (drmModeAddFB2(drmfd_, width, height, out_fourcc_, bo_handles, pitches, offsets, &buffer.fb_handle, 0))
++	if (out_fourcc_ == DRM_FORMAT_YUV420) {
++		uint32_t offsets[4] = { 0, stride * height, stride * height + (stride / 2) * (height / 2) };
++		uint32_t pitches[4] = { stride, stride / 2, stride / 2 };
++		uint32_t bo_handles[4] = { buffer.bo_handle, buffer.bo_handle, buffer.bo_handle };
++
++		if (drmModeAddFB2(drmfd_, width, height, out_fourcc_, bo_handles, pitches, offsets, &buffer.fb_handle, 0))
++			throw std::runtime_error("YUV420 drmModeAddFB2 failed: " + std::string(ERRSTR));
++	} else if (out_fourcc_ == DRM_FORMAT_NV12 || out_fourcc_ == DRM_FORMAT_NV21) {
++		uint32_t offsets[4] = { 0, stride * height};
++		uint32_t pitches[4] = { stride, stride};
++		uint32_t bo_handles[4] = { buffer.bo_handle, buffer.bo_handle};
++
++		if (drmModeAddFB2(drmfd_, width, height, out_fourcc_, bo_handles, pitches, offsets, &buffer.fb_handle, 0))
++			throw std::runtime_error("NV12/21 drmModeAddFB2 failed: " + std::string(ERRSTR));
++	} else
+ 		throw std::runtime_error("drmModeAddFB2 failed: " + std::string(ERRSTR));
++
++	/* find preferred mode */
++	drmModeModeInfo *modeptr = NULL, *preferred = NULL;
++	for (int m = 0; m < con_->count_modes; m++) {
++		modeptr = &con_->modes[m];
++		if (modeptr->hdisplay == width && modeptr->vdisplay == height) {
++			preferred = modeptr;
++			std::cout << "find the matched mode, modes index= "
++				<< m << ", " << width << "x" << height << std::endl;
++			break;
++		}
++		if (modeptr->type & DRM_MODE_TYPE_PREFERRED) {
++			preferred = modeptr;
++			std::cout << "find perferred mode, modes index= " << m << std::endl;
++		}
++	}
++
++	if (!preferred)
++		preferred = &con_->modes[0];
++
++	// set default
++	if (drmModeSetCrtc(drmfd_, crtcId_, buffer.fb_handle, 0, 0,
++	        (uint32_t *)&conId_, 1, preferred)) {
++		throw std::runtime_error("drmModeSetCrtc() failed");
++	}
++
++	screen_width_ = preferred->hdisplay;
++	screen_height_ = preferred->vdisplay;
++	width_ = width;
++	height_ = height;
+ }
+ 
+ void DrmPreview::Show(int fd, libcamera::Span<uint8_t> span, int width, int height, int stride)
+-- 
+2.17.1
+

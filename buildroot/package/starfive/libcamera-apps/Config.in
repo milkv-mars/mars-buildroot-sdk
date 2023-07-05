@@ -1,0 +1,19 @@
+config BR2_PACKAGE_LIBCAMERA_APPS
+	bool "libcamera-apps"
+	depends on BR2_PACKAGE_LIBCAMERA
+	select BR2_PACKAGE_GNUTLS
+	select BR2_PACKAGE_BOOST
+	select BR2_PACKAGE_BOOST_PROGRAM_OPTIONS
+	select BR2_PACKAGE_BOOST_SYSTEM
+	select BR2_PACKAGE_TIFF
+	select BR2_PACKAGE_LIBEXIF
+	select BR2_PACKAGE_LIBYUV
+	select BR2_PACKAGE_LIBPNG
+	help
+	  libcamera-apps provides a software stack to support
+	  complex devices that need heavy hardware image
+	  processing operations.
+
+comment "libcamera-apps needs a toolchain w/ C++, threads, wchar, dynamic library, gcc >= 7"
+	depends on !BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_HAS_THREADS || \
+		!BR2_TOOLCHAIN_GCC_AT_LEAST_7 || BR2_STATIC_LIBS || !BR2_USE_WCHAR

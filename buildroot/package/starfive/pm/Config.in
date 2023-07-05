@@ -1,0 +1,6 @@
+comment "pm package"
+
+config BR2_PACKAGE_PM
+	bool "pm"
+	help
+	  Utility for pm initialization & configuration.

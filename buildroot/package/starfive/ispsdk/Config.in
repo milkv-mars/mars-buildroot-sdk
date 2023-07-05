@@ -1,0 +1,6 @@
+comment "starfive ispsdk package"
+
+config BR2_PACKAGE_ISPSDK
+	bool "ispsdk"
+	help
+	  starfive ispsdk package

@@ -1,0 +1,195 @@
+From 43ac4b2e62f6998a24b6b42e2ce25917f674b18b Mon Sep 17 00:00:00 2001
+From: liuxl0327 <liuxl0327@starfivetech.com>
+Date: Fri, 8 Apr 2022 09:27:55 +0800
+Subject: [PATCH] libcamera support isp driver
+
+---
+ src/libcamera/pipeline/starfive/starfive.cpp | 94 ++++++++++++++------
+ 1 file changed, 65 insertions(+), 29 deletions(-)
+
+diff --git a/src/libcamera/pipeline/starfive/starfive.cpp b/src/libcamera/pipeline/starfive/starfive.cpp
+index 0de22f2c..1689ad9d 100644
+--- a/src/libcamera/pipeline/starfive/starfive.cpp
++++ b/src/libcamera/pipeline/starfive/starfive.cpp
+@@ -73,55 +73,61 @@ std::vector<SensorConfig> sensorConfigs;
+ 
+ typedef struct {
+ 	std::string source;
+-	std::string link;
++	unsigned int sourceIdx;
++	std::string sink;
++	unsigned int sinkIdx;
+ } PipelineConfigLink;
+ 
+ const std::vector<PipelineConfigLink> dvpyuvConfig = {
+-	{"stf_dvp0", "stf_vin0_wr"},
++	{"stf_dvp0", 1, "stf_vin0_wr", 0},
+ };
+ 
+ const std::vector<PipelineConfigLink> mipicsi0yuvConfig = {
+-	{"stf_csiphy0", "stf_csi0"},
+-	{"stf_csi0", "stf_vin0_wr"}
++	{"stf_csiphy0", 1, "stf_csi0", 0},
++	{"stf_csi0", 1, "stf_vin0_wr", 0}
+ };
+ 
+ const std::vector<PipelineConfigLink> mipicsi1yuvConfig = {
+-	{"stf_csiphy1", "stf_csi1"},
+-	{"stf_csi1", "stf_vin0_wr"}
++	{"stf_csiphy1", 1, "stf_csi1", 0},
++	{"stf_csi1", 1, "stf_vin0_wr", 0}
+ };
+ 
+ const std::vector<PipelineConfigLink> dvpraw0Config = {
+-	{"stf_dvp0", "stf_isp0"},
+-	{"stf_isp0", "stf_vin0_isp0"}
++	{"stf_dvp0", 1, "stf_isp0", 0},
+ };
+ 
+ const std::vector<PipelineConfigLink> mipicsi0raw0Config = {
+-	{"stf_csiphy0", "stf_csi0"},
+-	{"stf_csi0", "stf_isp0"},
+-	{"stf_isp0", "stf_vin0_isp0"}
++	{"stf_csiphy0", 1, "stf_csi0", 0},
++	{"stf_csi0", 1, "stf_isp0", 0},
+ };
+ 
+ const std::vector<PipelineConfigLink> mipicsi1raw0Config = {
+-	{"stf_csiphy1", "stf_csi1"},
+-	{"stf_csi1", "stf_isp0"},
+-	{"stf_isp0", "stf_vin0_isp0"}
++	{"stf_csiphy1", 1, "stf_csi1", 0},
++	{"stf_csi1", 1, "stf_isp0", 0},
+ };
+ 
+ const std::vector<PipelineConfigLink> dvpraw1Config = {
+-	{"stf_dvp0", "stf_isp1"},
+-	{"stf_isp1", "stf_vin0_isp1"}
++	{"stf_dvp0", 1, "stf_isp1", 0},
+ };
+ 
+ const std::vector<PipelineConfigLink> mipicsi0raw1Config = {
+-	{"stf_csiphy0", "stf_csi0"},
+-	{"stf_csi0", "stf_isp1"},
+-	{"stf_isp1", "stf_vin0_isp1"}
++	{"stf_csiphy0", 1, "stf_csi0", 0},
++	{"stf_csi0", 1, "stf_isp1", 0},
+ };
+ 
+ const std::vector<PipelineConfigLink> mipicsi1raw1Config = {
+-	{"stf_csiphy1", "stf_csi1"},
+-	{"stf_csi1", "stf_isp1"},
+-	{"stf_isp1", "stf_vin0_isp1"}
++	{"stf_csiphy1", 1, "stf_csi1", 0},
++	{"stf_csi1", 1, "stf_isp1", 0},
++};
++
++const std::vector<PipelineConfigLink> isp0Config = {
++	{"stf_isp0", 1, "stf_vin0_isp0", 0},
++	{"stf_isp0", 6, "stf_vin0_isp0_raw", 0}
++};
++
++const std::vector<PipelineConfigLink> isp1Config = {
++	{"stf_isp1", 1, "stf_vin0_isp1", 0},
++	{"stf_isp1", 6, "stf_vin0_isp1_raw", 0}
+ };
+ 
+ const std::vector<PipelineConfigLink> pipelineConfigs[SENSORTYPE_MAX] = {
+@@ -248,9 +254,9 @@ private:
+ 	{
+ 		LOG(STARFIVE, Debug) << __func__;
+ 		if ( videoEntityName_ == "stf_vin0_isp0_video1")
+-			return "stf_vin0_isp0_raw_video3";
++			return "stf_vin0_isp0_raw_video11";
+ 		else if (videoEntityName_ == "stf_vin0_isp1_video2")
+-			return "stf_vin0_isp1_raw_video4";
++			return "stf_vin0_isp1_raw_video12";
+ 		else
+ 			return "unknow";
+ 	}
+@@ -438,6 +444,7 @@ private:
+ 	int registerCameras();
+ 	std::string getVideoEntityNameById(unsigned int id);
+ 	std::string findSensorEntityName(std::string entityName);
++	int enableLinks(int sensorType);
+ 	int enableLinks(std::vector<PipelineConfigLink> config);
+ 
+ 	MediaDevice *starFiveMediaDev_;
+@@ -544,7 +551,7 @@ PipelineHandlerStarFive::generateConfiguration(Camera *camera,
+ 	if (roles.empty())
+ 		return config;
+ 
+-	int ret = enableLinks(pipelineConfigs[sensorConfig.sensorType_]);
++	int ret = enableLinks(sensorConfig.sensorType_);
+ 	if (ret < 0) {
+ 		LOG(STARFIVE, Error)
+ 			<< sensorConfig.sensorEntityName_
+@@ -942,9 +949,9 @@ std::string PipelineHandlerStarFive::getVideoEntityNameById(unsigned int id)
+ 	case 2:
+ 		return "stf_vin0_isp1_video2";
+ 	case 3:
+-		return "stf_vin0_isp0_raw_video3";
++		return "stf_vin0_isp0_raw_video11";
+ 	case 4:
+-		return "stf_vin0_isp1_raw_video4";
++		return "stf_vin0_isp1_raw_video12";
+ 	default:
+ 		return "unknow";
+ 	}
+@@ -1028,7 +1035,7 @@ int PipelineHandlerStarFive::registerCameras()
+ 		MediaEntity *sensorEntity =
+ 			starFiveMediaDev_->getEntityByName(it.sensorEntityName_);
+ 		if (sensorEntity != nullptr) {
+-			int ret = enableLinks(pipelineConfigs[it.sensorType_]);
++			int ret = enableLinks(it.sensorType_);
+ 			if (ret < 0) {
+ 				LOG(STARFIVE, Error)
+ 					<< it.sensorEntityName_
+@@ -1097,7 +1104,7 @@ int PipelineHandlerStarFive::enableLinks(std::vector<PipelineConfigLink> config)
+ 
+ 	LOG(STARFIVE, Debug) << __func__;
+ 	for (PipelineConfigLink it : config) {
+-		MediaLink *link = starFiveMediaDev_->link(it.source, 1, it.link, 0);
++		MediaLink *link = starFiveMediaDev_->link(it.source, it.sourceIdx, it.sink, it.sinkIdx);
+ 		if (!link)
+ 			return -ENODEV;
+ 
+@@ -1126,6 +1133,35 @@ int PipelineHandlerStarFive::enableLinks(std::vector<PipelineConfigLink> config)
+ 	return ret;
+ }
+ 
++int PipelineHandlerStarFive::enableLinks(int sensorType)
++{
++	int ret = 0;
++
++	LOG(STARFIVE, Debug) << __func__;
++	if (sensorType > SENSORTYPE_MAX || sensorType < DVP_YUV)
++		return -ENODEV;
++
++	ret = enableLinks(pipelineConfigs[sensorType]);
++	if (ret)
++		return ret;
++	switch (sensorType) {
++		case DVP_ISP0:
++		case MIPICSI0_ISP0:
++		case MIPICSI1_ISP0:
++			ret = enableLinks(isp0Config);
++			break;
++		case DVP_ISP1:
++		case MIPICSI0_ISP1:
++		case MIPICSI1_ISP1:
++			ret = enableLinks(isp1Config);
++			break;
++		default:
++			break;
++	}
++
++	return ret;
++}
++
+ static void loaddefaultSensorConfig(void)
+ {
+ 	LOG(STARFIVE, Debug) << __func__;
+-- 
+2.17.1
+

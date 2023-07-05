@@ -1,0 +1,32 @@
+#!/bin/sh
+#
+# hibernation    This shell script to turn on swap partition and
+#                set the image_size as big as ram size.
+
+case "$1" in
+	start)
+		# Set the hibernation image_size as large as the ram size.
+		total_mem=$(cat /proc/meminfo | sed -n '1p')
+		echo $((${total_mem: 10: 15}*1024)) > /sys/power/image_size
+		FILE=/dev/disk/by-partlabel/hibernation
+		if [ -b "$FILE" ];then
+			swapon PARTLABEL="hibernation"
+		else
+			echo "No PARTLABEL=hibernation!"
+		fi
+		;;
+	stop)
+		FILE=/dev/disk/by-partlabel/hibernation
+                if [ -b "$FILE" ];then
+			swapoff PARTLABEL="hibernation"
+		else
+			echo "No PARTLABEL=hibernation!"
+		fi
+		;;
+	*)
+		echo "Usage: $0 {start|stop}"
+		exit 1
+esac
+
+exit 0
+

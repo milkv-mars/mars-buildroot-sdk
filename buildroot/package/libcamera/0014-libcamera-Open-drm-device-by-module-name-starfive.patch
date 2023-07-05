@@ -1,0 +1,41 @@
+From b04b58f1eea0b2fe417205846beef663c89275b7 Mon Sep 17 00:00:00 2001
+From: "Kevin.xie" <kevin.xie@starfivetech.com>
+Date: Wed, 3 Aug 2022 16:26:26 +0800
+Subject: [PATCH] libcamera: Open drm device by module name 'starfive'
+
+Signed-off-by: Kevin.xie <kevin.xie@starfivetech.com>
+---
+ src/cam/drm.cpp | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/src/cam/drm.cpp b/src/cam/drm.cpp
+index f253009..72c64c9 100644
+--- a/src/cam/drm.cpp
++++ b/src/cam/drm.cpp
+@@ -393,8 +393,8 @@ Device::~Device()
+ 
+ int Device::init()
+ {
+-	constexpr size_t NODE_NAME_MAX = sizeof("/dev/dri/card255");
+-	char name[NODE_NAME_MAX];
++	//constexpr size_t NODE_NAME_MAX = sizeof("/dev/dri/card255");
++	//char name[NODE_NAME_MAX];
+ 	int ret;
+ 
+ 	/*
+@@ -404,8 +404,10 @@ int Device::init()
+ 	 * from drmOpen() is of no practical use as any modern system will
+ 	 * handle that through udev or an equivalent component.
+ 	 */
+-	snprintf(name, sizeof(name), "/dev/dri/card%u", 0);
+-	fd_ = open(name, O_RDWR | O_CLOEXEC);
++	//snprintf(name, sizeof(name), "/dev/dri/card%u", 0);
++	//fd_ = open(name, O_RDWR | O_CLOEXEC);
++	const char *name = "starfive";
++	fd_ = drmOpen(name, NULL);
+ 	if (fd_ < 0) {
+ 		ret = -errno;
+ 		std::cerr
+-- 
+2.17.1
+

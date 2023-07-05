@@ -1,0 +1,74 @@
+From eb7bd9dc15d8a2636d12d4e8cec219946fea353d Mon Sep 17 00:00:00 2001
+From: sw.multimedia <sw.multimedia@starfivetech.com>
+Date: Tue, 16 Nov 2021 17:23:17 +0800
+Subject: [PATCH 04/10] update toV4L2PixelFormat
+
+---
+ src/libcamera/pipeline/starfive/starfive.cpp | 18 ++++++++++++------
+ 1 file changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/src/libcamera/pipeline/starfive/starfive.cpp b/src/libcamera/pipeline/starfive/starfive.cpp
+index bc82a062..58e1f55a 100644
+--- a/src/libcamera/pipeline/starfive/starfive.cpp
++++ b/src/libcamera/pipeline/starfive/starfive.cpp
+@@ -440,7 +440,8 @@ CameraConfiguration::Status StarFiveCameraConfiguration::validate()
+ 				&& data_->haveRaw()) {
+ 			V4L2DeviceFormat format = {};
+ 			format.fourcc =
+-				data_->raw_->toV4L2PixelFormat(cfg.pixelFormat);
++				V4L2PixelFormat::fromPixelFormat(cfg.pixelFormat,
++						data_->raw_->caps().isMultiplanar());
+ 			format.size = cfg.size;
+ 
+ 			int ret = data_->raw_->tryFormat(&format);
+@@ -454,7 +455,8 @@ CameraConfiguration::Status StarFiveCameraConfiguration::validate()
+ 		} else {
+ 			V4L2DeviceFormat format = {};
+ 			format.fourcc =
+-				data_->video_->toV4L2PixelFormat(cfg.pixelFormat);
++				V4L2PixelFormat::fromPixelFormat(cfg.pixelFormat,
++						data_->video_->caps().isMultiplanar());
+ 			format.size = cfg.size;
+ 
+ 			int ret = data_->video_->tryFormat(&format);
+@@ -571,7 +573,8 @@ int PipelineHandlerStarFive::configure(Camera *camera, CameraConfiguration *c)
+ 		if (stream == &data->rawStream_) {
+ 			V4L2DeviceFormat format = {};
+ 			format.fourcc =
+-				data->raw_->toV4L2PixelFormat(cfg.pixelFormat);
++				V4L2PixelFormat::fromPixelFormat(cfg.pixelFormat,
++						data->raw_->caps().isMultiplanar());
+ 			format.size = cfg.size;
+ 
+ 			ret = data->raw_->setFormat(&format);
+@@ -580,13 +583,15 @@ int PipelineHandlerStarFive::configure(Camera *camera, CameraConfiguration *c)
+ 
+ 			if (format.size != cfg.size ||
+ 			    format.fourcc !=
+-			    data->raw_->toV4L2PixelFormat(cfg.pixelFormat))
++			    V4L2PixelFormat::fromPixelFormat(cfg.pixelFormat,
++				    data->raw_->caps().isMultiplanar()))
+ 				return -EINVAL;
+ 
+ 		} else if (stream == &data->outStream_) {
+ 			V4L2DeviceFormat format = {};
+ 			format.fourcc =
+-				data->video_->toV4L2PixelFormat(cfg.pixelFormat);
++				V4L2PixelFormat::fromPixelFormat(cfg.pixelFormat,
++						data->video_->caps().isMultiplanar());
+ 			format.size = cfg.size;
+ 
+ 			ret = data->video_->setFormat(&format);
+@@ -595,7 +600,8 @@ int PipelineHandlerStarFive::configure(Camera *camera, CameraConfiguration *c)
+ 
+ 			if (format.size != cfg.size ||
+ 			    format.fourcc !=
+-			    data->video_->toV4L2PixelFormat(cfg.pixelFormat))
++			    V4L2PixelFormat::fromPixelFormat(cfg.pixelFormat,
++				    data->video_->caps().isMultiplanar()))
+ 				return -EINVAL;
+ 		}
+ 
+-- 
+2.25.1
+
