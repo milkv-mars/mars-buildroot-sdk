@@ -1235,8 +1235,8 @@ STATIC void GetFrameBufStride(FrameFormat subsample, CbCrInterLeave cbcrIntlv, P
             cStride = JPU_CEIL(8, cStride);
         }
     }
-    lHeight = JPU_CEIL(8, lHeight);
-    cHeight = JPU_CEIL(8, cHeight);
+    lHeight = JPU_CEIL(4, lHeight);
+    cHeight = JPU_CEIL(4, cHeight);
 
     lStride *= bytePerPixel;
     cStride *= bytePerPixel;
