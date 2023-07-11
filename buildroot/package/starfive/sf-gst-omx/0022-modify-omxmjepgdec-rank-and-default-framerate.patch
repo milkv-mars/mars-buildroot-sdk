@@ -1,0 +1,26 @@
+Raise omxmjpegdec rank and modify default framerate.
+
+Signed-off-by: Leo Lu <leo.lu@starfivetech.com>
+
+diff -purN a/config/stf/gstomx.conf b/config/stf/gstomx.conf
+--- a/config/stf/gstomx.conf	2023-07-11 09:47:30.321610934 +0800
++++ b/config/stf/gstomx.conf	2023-07-11 09:45:56.284368850 +0800
+@@ -40,6 +40,6 @@ core-name=/usr/lib/libsf-omx-il.so
+ component-name=OMX.sf.video_decoder.mjpeg.internal
+ in-port-index=0
+ out-port-index=1
+-rank=1
++rank=257
+ hacks=pass-profile-to-decoder;pass-color-format-to-decoder;ensure-buffer-count-actual;no-component-reconfigure
+ src-template-caps=video/x-raw, format = (string) { NV16_10LE32, NV12_10LE32, NV16, NV61, YUY2, YVYU, UYVY, NV12, NV21, I420, RGB16, BGR16, ABGR, ARGB, GRAY8, Y42B, Y444, VYUY, v308 }, width = (int) [ 1, max ], height = (int) [ 1, max ], framerate = (fraction) [ 0, max ]
+--- a/omx/gstomxmjpegdec.c	2023-07-11 09:47:30.285610474 +0800
++++ b/omx/gstomxmjpegdec.c	2023-07-11 09:46:30.204826151 +0800
+@@ -172,7 +172,7 @@ gst_omx_mjpeg_dec_class_init (GstOMXMJPE
+         "Frames per second in raw stream.\n                \
+          Only workable for the container not exposing fps.\n\
+                          '0' means disabled.",
+-         0, G_MAXINT,
++         25, G_MAXINT,
+          DEFAULT_FRAMERATE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+ #endif
+   g_object_class_install_property (gobject_class, PROP_MIRROR,
