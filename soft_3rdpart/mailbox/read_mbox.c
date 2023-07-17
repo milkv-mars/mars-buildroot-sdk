@@ -33,7 +33,7 @@ void init_signal(int fd)
 void * mailbox_user_read(void *arg)
 {
     char buf[8] = {0};
-    int fp = open("/sys/kernel/debug/soc:mailbox_client@0/message", O_RDWR);
+    int fp = open("/sys/kernel/debug/mailbox_client/message", O_RDWR);
 
     while(active) {
         read(fp, buf, sizeof(char));
@@ -48,7 +48,7 @@ int main(int argv,char **argc)
     int fd = 0, i = 0;
     char buf_tx[8];
 
-    fd = open("/sys/kernel/debug/soc:mailbox_client@0/message", O_RDWR);
+    fd = open("/sys/kernel/debug/mailbox_client/message", O_RDWR);
     if (fd < 0) {
         printf("open device error\n");
         return 1;
