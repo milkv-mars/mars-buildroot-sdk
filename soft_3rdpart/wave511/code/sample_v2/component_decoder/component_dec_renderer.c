@@ -287,6 +287,27 @@ void* AllocateFrameBuffer2(ComponentImpl* com, Uint32 size)
     return ret;
 }
 
+void FreeFrameBuffer2(ComponentImpl* com, void* pBuffer)
+{
+    RendererContext*     ctx            = (RendererContext*)com->context;
+    int i = 0;
+
+    if (ctx->handle == NULL) {
+        ctx->MemoryOptimization = FALSE;
+        return;
+    }
+
+    for (i = 0;i < MAX_REG_FRAME; i ++){
+        if (ctx->pLinearFbMem[i].virt_addr == (unsigned long)pBuffer)
+        {
+            VLOG(INFO, "free dmabuffer at index %d\r\n", i);
+            vdi_free_dma_memory(ctx->testDecConfig.coreIdx, &ctx->pLinearFbMem[i], DEC_FB_LINEAR, ctx->handle->instIndex);
+            return;
+        }
+    }
+    VLOG(ERR, "FreeFrameBuffer2 can not find buffer %p\r\n", pBuffer);
+}
+
 Uint64 RemapDMABuffer(ComponentImpl* com, Uint64 virtAddress, Uint32 size)
 {
     RendererContext*     ctx;
@@ -657,9 +678,18 @@ static void ReleaseRenderer(ComponentImpl* com)
     Uint32           i;
 
 #ifdef USE_FEEDING_METHOD_BUFFER
-    if (!ctx->useBufferExternal)
-    {
-#endif
+    for (i=0; i<MAX_REG_FRAME; i++) {
+        if (ctx->pFbMem[i].size) {
+            if (i < ctx->fbCount.nonLinearNum)
+            {
+                vdi_free_dma_memory(coreIdx, &ctx->pFbMem[i], DEC_FBC, ctx->handle->instIndex);
+            }else{
+                if(!ctx->MemoryOptimization)
+                    vdi_free_dma_memory(coreIdx, &ctx->pFbMem[i], DEC_FB_LINEAR, ctx->handle->instIndex);
+            }
+        }
+    }
+#else
     for (i=0; i<MAX_REG_FRAME; i++) {
         if (ctx->pFbMem[i].size) {
             if (i < ctx->fbCount.linearNum)
@@ -667,8 +697,6 @@ static void ReleaseRenderer(ComponentImpl* com)
             else
                 vdi_free_dma_memory(coreIdx, &ctx->pFbMem[i], DEC_FB_LINEAR, ctx->handle->instIndex);
         }
-    }
-#ifdef USE_FEEDING_METHOD_BUFFER
     }
 #endif
 
