@@ -53,6 +53,7 @@ typedef struct {
 
 typedef struct {
     FRAME_BUF frameBuf[MAX_FRAME];
+    jpu_buffer_t vb[MAX_FRAME];
     jpu_buffer_t vb_base;
     int instIndex;
     int last_num;
@@ -247,6 +248,7 @@ extern BOOL ParseMultiLongOptions(TestMultiConfig* config, const char* argName, 
 extern BOOL AllocateFrameBuffer(Uint32 instIdx, FrameFormat subsample, CbCrInterLeave cbcrIntlv, PackedFormat packed,
                                 Uint32 rotation, BOOL scalerOn, Uint32 width, Uint32 height, Uint32 bitDepth, Uint32 num);
 extern void FreeFrameBuffer(int instIdx);
+extern void FreeOneFrameBuffer(int instIdx, unsigned int bufferIndex);
 extern FRAME_BUF *GetFrameBuffer(int instIdx, int index);
 extern int GetFrameBufBase(int instIdx);
 extern int GetFrameBufAllocSize(int instIdx);

@@ -1416,7 +1416,7 @@ BOOL AttachOneFrameBuffer(Uint32 instIdx, FrameFormat subsample, CbCrInterLeave 
 }
 
 void *AllocateOneFrameBuffer(Uint32 instIdx, FrameFormat subsample, CbCrInterLeave cbcrIntlv, PackedFormat packed,
-                         Uint32 rotation, BOOL scalerOn, Uint32 width, Uint32 height, Uint32 bitDepth, Uint32 *bufferIndex)
+                         Uint32 rotation, BOOL scalerOn, Uint32 width, Uint32 height, Uint32 bitDepth, Uint32 bufferIndex)
 {
     fb_context *fb;
     Uint32  fbLumaStride, fbLumaHeight, fbChromaStride, fbChromaHeight;
@@ -1471,9 +1471,10 @@ void *AllocateOneFrameBuffer(Uint32 instIdx, FrameFormat subsample, CbCrInterLea
         JLOG(ERR, "Fail to allocate frame buffer size=%d\n", fb->vb_base.size);
         return NULL;
     }
+    fb->vb[bufferIndex] = fb->vb_base;
     fb->last_addr = fb->vb_base.phys_addr;
 
-    i = fb->last_num;
+    i = bufferIndex;
     JLOG(INFO, "%s: store on index %d\r\n", __FUNCTION__, i);
     fb->frameBuf[i].Format = subsample;
     fb->frameBuf[i].Index  = i;
@@ -1502,10 +1503,8 @@ void *AllocateOneFrameBuffer(Uint32 instIdx, FrameFormat subsample, CbCrInterLea
     fb->frameBuf[i].strideY = fbLumaStride;
     fb->frameBuf[i].strideC = fbChromaStride;
 
-    *bufferIndex = fb->last_num;
-    fb->last_num += 1;
-
     virt_addr = (void *)fb->vb_base.virt_addr;
+    fb->last_num = bufferIndex + 1;
 
     JLOG(INFO, "%s function OUT, number = %d, return = %p\r\n", __FUNCTION__, fb->last_num, virt_addr);
     return virt_addr;
@@ -1932,6 +1931,19 @@ FRAME_BUF* FindFrameBuffer(int instIdx, PhysicalAddress addrY)
     }
 
     return NULL;
+}
+
+void FreeOneFrameBuffer(int instIdx, unsigned int bufferIndex)
+{
+    fb_context *fb;
+
+    fb = &s_fb[instIdx];
+
+    if(fb->vb[bufferIndex].base)
+    {
+        jdi_free_dma_memory(&fb->vb[bufferIndex]);
+        fb->vb[bufferIndex].base = 0;
+    }
 }
 
 void FreeFrameBuffer(int instIdx)
