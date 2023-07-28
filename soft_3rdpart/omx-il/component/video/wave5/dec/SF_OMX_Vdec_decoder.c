@@ -761,6 +761,7 @@ static OMX_ERRORTYPE SF_OMX_GetParameter(
     OMX_ERRORTYPE ret = OMX_ErrorNone;
     OMX_COMPONENTTYPE *pOMXComponent = (OMX_COMPONENTTYPE *)hComponent;
     SF_OMX_COMPONENT *pSfOMXComponent = pOMXComponent->pComponentPrivate;
+    SF_WAVE5_IMPLEMEMT *pSfVideoImplement = (SF_WAVE5_IMPLEMEMT *)pSfOMXComponent->componentImpl;
     FunctionIn();
     LOG(SF_LOG_INFO, "Get parameter on index %X\r\n", nParamIndex);
     if (hComponent == NULL || ComponentParameterStructure == NULL)
@@ -890,6 +891,18 @@ static OMX_ERRORTYPE SF_OMX_GetParameter(
             ret = OMX_ErrorBadPortIndex;
     }
         break;
+    case OMX_IndexParamVideoProfileLevelCurrent:
+    {
+        OMX_VIDEO_PARAM_PROFILELEVELTYPE *pSrcProfileLevel = (OMX_VIDEO_PARAM_PROFILELEVELTYPE *)ComponentParameterStructure;
+        OMX_U32 portIndex = pSrcProfileLevel->nPortIndex;
+        OMX_VIDEO_PARAM_AVCTYPE *pAVCComponent = NULL;
+        if (portIndex >= 2)
+            ret = OMX_ErrorBadPortIndex;
+        pAVCComponent = &pSfVideoImplement->AVCComponent[portIndex];
+        pSrcProfileLevel->eProfile = pAVCComponent->eProfile;
+        pSrcProfileLevel->eLevel = pAVCComponent->eLevel;
+    }
+        break;
 
     default:
         ret = OMX_ErrorUnsupportedIndex;
@@ -1015,7 +1028,17 @@ static OMX_ERRORTYPE SF_OMX_SetParameter(
 
             pInputPort->format.video.nStride = width;
             pInputPort->format.video.nSliceHeight = height;
-            pInputPort->nBufferSize = width * height * 2;
+            pInputPort->nBufferSize = width * height / 2;
+
+            pOutputPort->format.video.nFrameWidth = width;
+            pOutputPort->format.video.nFrameHeight = height;
+            pOutputPort->format.video.nStride = width;
+            pOutputPort->format.video.nSliceHeight = height;
+            pTestDecConfig->scaleDownWidth = VPU_CEIL(width, 2);
+            pTestDecConfig->scaleDownHeight = VPU_CEIL(height, 2);
+            if (width && height)
+                    pOutputPort->nBufferSize = (width * height * 3) / 2;
+            LOG(SF_LOG_INFO, "Set scale = %d, %d\r\n", pTestDecConfig->scaleDownWidth , pTestDecConfig->scaleDownHeight);
         }
         else if (portIndex == 1)
         {
@@ -1131,6 +1154,18 @@ static OMX_ERRORTYPE SF_OMX_SetParameter(
         OMX_U32 portIndex = bufferSupplier->nPortIndex;
         if (portIndex >= 2)
             ret = OMX_ErrorBadPortIndex;
+    }
+        break;
+    case OMX_IndexParamVideoProfileLevelCurrent:
+    {
+        OMX_VIDEO_PARAM_PROFILELEVELTYPE *pSrcProfileLevel = (OMX_VIDEO_PARAM_PROFILELEVELTYPE *)ComponentParameterStructure;
+        OMX_U32 portIndex = pSrcProfileLevel->nPortIndex;
+        OMX_VIDEO_PARAM_AVCTYPE *pAVCComponent = NULL;
+        if (portIndex >= 2)
+            ret = OMX_ErrorBadPortIndex;
+        pAVCComponent = &pSfVideoImplement->AVCComponent[portIndex];
+        pAVCComponent->eProfile = pSrcProfileLevel->eProfile;
+        pAVCComponent->eLevel = pSrcProfileLevel->eLevel;
     }
         break;
 
