@@ -280,6 +280,7 @@ static void sf_get_component_functions(SF_CODAJ12_FUNCTIONS *funcs, OMX_PTR *soh
     funcs->AllocateOneFrameBuffer = dlsym(sohandle, "AllocateOneFrameBuffer");
     funcs->AllocateFrameBuffer = dlsym(sohandle, "AllocateFrameBuffer");
     funcs->FreeFrameBuffer = dlsym(sohandle, "FreeFrameBuffer");
+    funcs->FreeOneFrameBuffer = dlsym(sohandle, "FreeOneFrameBuffer");
     funcs->GetFrameBuffer = dlsym(sohandle, "GetFrameBuffer");
     funcs->GetFrameBufferCount = dlsym(sohandle, "GetFrameBufferCount");
     funcs->UpdateFrameBuffers = dlsym(sohandle, "UpdateFrameBuffers");
@@ -427,7 +428,7 @@ OMX_BOOL AttachOutputBuffer(SF_OMX_COMPONENT *pSfOMXComponent, OMX_U8* pBuffer, 
 
 }
 
-OMX_U8 *AllocateOutputBuffer(SF_OMX_COMPONENT *pSfOMXComponent, OMX_U32 nSizeBytes)
+OMX_U8 *AllocateOutputBuffer(SF_OMX_COMPONENT *pSfOMXComponent, OMX_U32 nBufferIndex, OMX_U32 nSizeBytes)
 {
     SF_CODAJ12_IMPLEMEMT *pSfCodaj12Implement = pSfOMXComponent->componentImpl;
     Int32 instIdx = pSfCodaj12Implement->instIdx;
@@ -444,7 +445,6 @@ OMX_U8 *AllocateOutputBuffer(SF_OMX_COMPONENT *pSfOMXComponent, OMX_U32 nSizeByt
     FrameFormat subsample;
     Uint32 temp;
     OMX_U8 *virtAddr;
-    Uint32 bufferIndex;
     JpgRet jpgret;
 
     CbCrInterLeave chromaInterleave;
@@ -552,29 +552,29 @@ OMX_U8 *AllocateOutputBuffer(SF_OMX_COMPONENT *pSfOMXComponent, OMX_U32 nSizeByt
                 scalerOn, decodingWidth, decodingHeight, bitDepth);
     virtAddr = (OMX_U8 *)pSfCodaj12Implement->functions->AllocateOneFrameBuffer
         (instIdx, subsample, chromaInterleave, packedFormat, decConfig->rotation,
-        scalerOn, decodingWidth, decodingHeight, bitDepth, &bufferIndex);
+        scalerOn, decodingWidth, decodingHeight, bitDepth, nBufferIndex);
     if (virtAddr == NULL)
     {
         LOG(SF_LOG_ERR, "Failed to AllocateOneFrameBuffer()\n");
         return NULL;
     }
-    LOG(SF_LOG_INFO, "Allocate frame buffer %p, index = %d\r\n", virtAddr, bufferIndex);
+    LOG(SF_LOG_INFO, "Allocate frame buffer %p, index = %d\r\n", virtAddr, nBufferIndex);
 
     //Register frame buffer
-    FRAME_BUF *pFrame = pSfCodaj12Implement->functions->GetFrameBuffer(instIdx, bufferIndex);
-    memcpy(&pSfCodaj12Implement->frame[bufferIndex], pFrame, sizeof(FRAME_BUF));
-    pFrameBuf[bufferIndex].bufY = pFrame->vbY.phys_addr;
-    pFrameBuf[bufferIndex].bufCb = pFrame->vbCb.phys_addr;
+    FRAME_BUF *pFrame = pSfCodaj12Implement->functions->GetFrameBuffer(instIdx, nBufferIndex);
+    memcpy(&pSfCodaj12Implement->frame[nBufferIndex], pFrame, sizeof(FRAME_BUF));
+    pFrameBuf[nBufferIndex].bufY = pFrame->vbY.phys_addr;
+    pFrameBuf[nBufferIndex].bufCb = pFrame->vbCb.phys_addr;
     if (decOP->chromaInterleave == CBCR_SEPARATED)
-        pFrameBuf[bufferIndex].bufCr = pFrame->vbCr.phys_addr;
-    pFrameBuf[bufferIndex].stride = pFrame->strideY;
-    pFrameBuf[bufferIndex].strideC = pFrame->strideC;
-    pFrameBuf[bufferIndex].endian = decOP->frameEndian;
-    pFrameBuf[bufferIndex].format = (FrameFormat)pFrame->Format;
-    framebufStride = pFrameBuf[bufferIndex].stride;
+        pFrameBuf[nBufferIndex].bufCr = pFrame->vbCr.phys_addr;
+    pFrameBuf[nBufferIndex].stride = pFrame->strideY;
+    pFrameBuf[nBufferIndex].strideC = pFrame->strideC;
+    pFrameBuf[nBufferIndex].endian = decOP->frameEndian;
+    pFrameBuf[nBufferIndex].format = (FrameFormat)pFrame->Format;
+    framebufStride = pFrameBuf[nBufferIndex].stride;
 
     // may be handle == NULL on ffmpeg case
-    jpgret = pSfCodaj12Implement->functions->JPU_DecRegisterFrameBuffer2(handle, &pFrameBuf[bufferIndex], framebufStride);
+    jpgret = pSfCodaj12Implement->functions->JPU_DecRegisterFrameBuffer2(handle, &pFrameBuf[nBufferIndex], framebufStride);
     LOG(SF_LOG_DEBUG, "JPU_DecRegisterFrameBuffer2 ret = %d\r\n", jpgret);
     FunctionOut();
     return virtAddr;

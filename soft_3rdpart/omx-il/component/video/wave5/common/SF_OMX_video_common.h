@@ -97,6 +97,7 @@ typedef struct _SF_COMPONENT_FUNCTIONS
     int (*GetMaxLogLevel)(void);
     // FrameBuffer
     void* (*AllocateFrameBuffer2)(ComponentImpl* com, Uint32 size);
+    void (*FreeFrameBuffer2)(ComponentImpl* com, void* pBuffer);
     BOOL (*AttachDMABuffer)(ComponentImpl* com, Uint64 virtAddress, Uint32 size);
     void (*SetRenderTotalBufferNumber)(ComponentImpl* com, Uint32 number);
     Uint32 (*GetRenderTotalBufferNumber)(ComponentImpl* com);

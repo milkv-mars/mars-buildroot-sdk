@@ -1556,6 +1556,12 @@ static OMX_ERRORTYPE SF_OMX_FreeBuffer(
         if(pBufferHdr->pBuffer)
             free(pBufferHdr->pBuffer);
     }
+    else if(pBufInfo->type == SF_BUFFER_DMA)
+    {
+        SF_WAVE5_IMPLEMEMT *pSfVideoImplement = (SF_WAVE5_IMPLEMEMT *)pSfOMXComponent->componentImpl;
+        ComponentImpl *pComponentRender = (ComponentImpl *)pSfVideoImplement->hSFComponentRender;
+        pSfVideoImplement->functions->FreeFrameBuffer2(pComponentRender, pBufferHdr->pBuffer);
+    }
 
     pSfOMXComponent->pBufferArray[nPortIndex][pBufInfo->index] = NULL;
     pSfOMXComponent->assignedBufferNum[nPortIndex]--;
