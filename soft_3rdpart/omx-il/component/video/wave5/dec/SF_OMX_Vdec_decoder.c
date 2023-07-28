@@ -14,7 +14,6 @@
 
 #define DEC_StopThread OMX_CommandMax
 
-extern OMX_TICKS gInitTimeStamp;
 
 typedef struct DEC_CMD
 {
@@ -81,8 +80,6 @@ static void OnEventArrived(Component com, unsigned long event, void *data, void 
     OMX_BUFFERHEADERTYPE **ppBuffer;
     OMX_BUFFERHEADERTYPE *pBuffer;
     SF_OMX_BUF_INFO *pBufInfo;
-    static OMX_U32 dec_cnt = 0;
-    static struct timeval tv_old = {0};
     OMX_U32 fps = 0;
     OMX_U64 diff_time = 0; // ms
     FunctionIn();
@@ -195,23 +192,23 @@ static void OnEventArrived(Component com, unsigned long event, void *data, void 
         }
 
         gettimeofday(&tv, NULL);
-        if (gInitTimeStamp == 0)
+	if (pSfVideoImplement->initTimeStamp == 0)
         {
-            gInitTimeStamp = tv.tv_sec * 1000000 + tv.tv_usec;
+            pSfVideoImplement->initTimeStamp = tv.tv_sec * 1000000 + tv.tv_usec;
         }
         pOMXBuffer->nFilledLen = pPortContainerExternal->nFilledLen;
-        pOMXBuffer->nTimeStamp = tv.tv_sec * 1000000 + tv.tv_usec - gInitTimeStamp;
+        pOMXBuffer->nTimeStamp = tv.tv_sec * 1000000 + tv.tv_usec - pSfVideoImplement->initTimeStamp;
 
         pBufInfo = pOMXBuffer->pOutputPortPrivate;
 
         // Following is to print the decoding fps
-        if (dec_cnt == 0) {
-            tv_old = tv;
+        if (pSfVideoImplement->fpsCnt == 0) {
+            pSfVideoImplement->fpsStarTime = tv;
         }
-        if (dec_cnt++ >= 50) {
-            diff_time = (tv.tv_sec - tv_old.tv_sec) * 1000 + (tv.tv_usec - tv_old.tv_usec) / 1000;
-            fps = 1000  * (dec_cnt - 1) / diff_time;
-            dec_cnt = 0;
+        if (pSfVideoImplement->fpsCnt++ >= 50) {
+            diff_time = (tv.tv_sec - pSfVideoImplement->fpsStarTime.tv_sec) * 1000 + (tv.tv_usec - pSfVideoImplement->fpsStarTime.tv_usec) / 1000;
+            fps = 1000  * (pSfVideoImplement->fpsCnt - 1) / diff_time;
+            pSfVideoImplement->fpsCnt = 0;
             LOG(SF_LOG_WARN, "Decoding fps: %d \r\n", fps);
         }
         if (pPortContainerExternal->nFlags & 0x1)
@@ -470,7 +467,7 @@ static OMX_ERRORTYPE SF_OMX_FillThisBuffer(
     pPortContainerExternal->nFilledLen = pBuffer->nAllocLen;
     pPortContainerExternal->pAppPrivate = (void*)pBuffer;
 
-    if (gInitTimeStamp != 0 && pSfOMXComponent->memory_optimization)
+    if (pSfVideoImplement->initTimeStamp != 0 && pSfOMXComponent->memory_optimization)
     {
         int clear = pSfVideoImplement->frame_array[pSfVideoImplement->frame_array_index];
         pSfVideoImplement->functions->Render_DecClrDispFlag(pRendererComponent->context, clear);
@@ -2076,7 +2073,7 @@ static OMX_ERRORTYPE SF_OMX_ComponentConstructor(SF_OMX_COMPONENT *pSfOMXCompone
     OMX_ERRORTYPE ret = OMX_ErrorNone;
     FunctionIn();
 
-    if (nInstance >= 1)
+    if (nInstance >= 4)
     {
         ret = OMX_ErrorInsufficientResources;
         goto EXIT;
@@ -2126,6 +2123,8 @@ static OMX_ERRORTYPE SF_OMX_ComponentConstructor(SF_OMX_COMPONENT *pSfOMXCompone
         pSfVideoImplement->frame_array[i] = -1;
     }
     pSfVideoImplement->frame_array_index = 0;
+    pSfVideoImplement->fpsCnt = 0;
+    pSfVideoImplement->initTimeStamp = 0;
 
     pSfVideoImplement->CmdQueue = SF_Queue_Create(20, sizeof(DEC_CMD));
     if (NULL == pSfVideoImplement->CmdQueue)

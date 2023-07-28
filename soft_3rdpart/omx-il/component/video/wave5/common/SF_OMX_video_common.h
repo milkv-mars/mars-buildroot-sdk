@@ -126,6 +126,9 @@ typedef struct _SF_WAVE5_IMPLEMEMT
     OMX_BOOL bCmdRunning;
     OMX_U64 frame_array[MAX_INDEX];
     OMX_U32 frame_array_index;
+    OMX_TICKS initTimeStamp;
+    OMX_U32 fpsCnt;
+    struct timeval fpsStarTime;
     OMX_VIDEO_PARAM_AVCTYPE AVCComponent[2];
     OMX_VIDEO_PARAM_HEVCTYPE HEVCComponent[2];
 }SF_WAVE5_IMPLEMEMT;
