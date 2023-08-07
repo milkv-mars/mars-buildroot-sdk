@@ -522,12 +522,6 @@ int main(int argc, char **argv)
         }
     }
 
-    if (decodeTestContext->sInputFilePath == NULL || decodeTestContext->sOutputFilePath == NULL)
-    {
-        help();
-        return -1;
-    }
-
     decodeTestContext->io_mthd = IO_METHOD_MMAP; //for now
     if (strstr(decodeTestContext->sOutputFormat, "nv12") != NULL)
     {
