@@ -223,6 +223,12 @@ $(vmlinux): $(linux_srcdir) $(linux_wrkdir)/.config $(target_gcc)
 		PATH=$(RVPATH) \
 		INSTALL_MOD_PATH=$(module_install_path) \
 		modules_install
+	$(MAKE) -C $< O=$(linux_wrkdir) \
+		ARCH=riscv \
+		CROSS_COMPILE=$(CROSS_COMPILE) \
+		PATH=$(RVPATH) \
+		INSTALL_PATH=$(linux_wrkdir) \
+		zinstall
 
 vpudriver-build: $(vmlinux)
 	$(MAKE) -C $(buildroot_initramfs_wrkdir) O=$(buildroot_initramfs_wrkdir) \
