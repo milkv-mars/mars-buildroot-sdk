@@ -503,24 +503,13 @@
 			};
 		};
 	};
-};
-
-&i2c6 {
-	clock-frequency = <100000>;
-	i2c-sda-hold-time-ns = <300>;
-	i2c-sda-falling-time-ns = <510>;
-	i2c-scl-falling-time-ns = <510>;
-	auto_calc_scl_lhcnt;
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c6_pins>;
-	status = "okay";
 
 	imx219: imx219@10 {
 		compatible = "sony,imx219";
 		reg = <0x10>;
 		clocks = <&clk_ext_camera>;
 		clock-names = "xclk";
-		reset-gpio = <&gpio 18 0>;
+		reset-gpio = <&gpio 24 0>;
 		//DOVDD-supply = <&v2v8>;
 		rotation = <0>;
 		orientation = <1>; //CAMERA_ORIENTATION_BACK
@@ -542,7 +531,7 @@
 		compatible = "sony,imx708";
 		reg = <0x1a>;
 		clocks = <&clk_ext_camera>;
-		reset-gpio = <&gpio 18 0>;
+		reset-gpio = <&gpio 24 0>;
 
 		port {
 			imx708_to_csi2rx0: endpoint {
@@ -559,7 +548,7 @@
 		reg = <0x36>;
 		clocks = <&clk_ext_camera>;
 		clock-names = "xclk";
-		//reset-gpio = <&gpio 18 0>;
+		//reset-gpio = <&gpio 24 0>;
 		rotation = <180>;
 
 		port {
@@ -572,6 +561,18 @@
 			};
 		};
 	};
+};
+
+&i2c6 {
+	clock-frequency = <100000>;
+	i2c-sda-hold-time-ns = <300>;
+	i2c-sda-falling-time-ns = <510>;
+	i2c-scl-falling-time-ns = <510>;
+	auto_calc_scl_lhcnt;
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c6_pins>;
+	status = "okay";
+
 };
 
 &sdio0 {
