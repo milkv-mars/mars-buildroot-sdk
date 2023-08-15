@@ -384,55 +384,6 @@
 	auto_calc_scl_lhcnt;
 	status = "okay";
 
-	seeed_plane_i2c@45 {
-		compatible = "seeed_panel";
-		reg = <0x45>;
-
-		port {
-			panel_out0: endpoint {
-				remote-endpoint = <&dsi0_output>;
-			};
-		};
-	};
-
-	tinker_ft5406: tinker_ft5406@38 {
-		compatible = "tinker_ft5406";
-		reg = <0x38>;
-	};
-
-	panel_radxa@19 {
-		compatible ="starfive_jadard";
-		reg = <0x19>;
-		reset-gpio = <&gpio 23 0>;
-		enable-gpio = <&gpio 22 0>;
-
-		port {
-			panel_out1: endpoint {
-				remote-endpoint = <&dsi1_output>;
-				};
-		};
-	};
-
-	touchscreen@14 {
-		compatible = "goodix,gt911";
-		reg = <0x14>;
-		irq-gpios = <&gpio 30 GPIO_ACTIVE_HIGH>;
-		reset-gpios = <&gpio 31 GPIO_ACTIVE_HIGH>;
-	};
-
-
-	panel_10inch@20 {
-		compatible ="panel_10inch";
-		reg = <0x20>;
-		reset-gpio = <&gpio 23 0>;
-		enable-gpio = <&gpio 22 0>;
-
-		port {
-			panel_out2: endpoint {
-				remote-endpoint = <&dsi2_output>;
-			};
-		};
-	};
 };
 
 &i2c5 {
@@ -558,6 +509,56 @@
 				bus-type = <4>;		/* MIPI CSI-2 D-PHY */
 				clock-lanes = <0>;
 				data-lanes = <1 2>;
+			};
+		};
+	};
+
+	seeed_plane_i2c@45 {
+		compatible = "seeed_panel";
+		reg = <0x45>;
+
+		port {
+			panel_out0: endpoint {
+				remote-endpoint = <&dsi0_output>;
+			};
+		};
+	};
+
+	tinker_ft5406: tinker_ft5406@38 {
+		compatible = "tinker_ft5406";
+		reg = <0x38>;
+	};
+
+	panel_radxa@19 {
+		compatible ="starfive_jadard";
+		reg = <0x19>;
+		reset-gpio = <&gpio 23 0>;
+		enable-gpio = <&gpio 22 0>;
+
+		port {
+			panel_out1: endpoint {
+				remote-endpoint = <&dsi1_output>;
+				};
+		};
+	};
+
+	touchscreen@14 {
+		compatible = "goodix,gt911";
+		reg = <0x14>;
+		irq-gpios = <&gpio 30 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpio 31 GPIO_ACTIVE_HIGH>;
+	};
+
+
+	panel_10inch@20 {
+		compatible ="panel_10inch";
+		reg = <0x20>;
+		reset-gpio = <&gpio 23 0>;
+		enable-gpio = <&gpio 22 0>;
+
+		port {
+			panel_out2: endpoint {
+				remote-endpoint = <&dsi2_output>;
 			};
 		};
 	};
