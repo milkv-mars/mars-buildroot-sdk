@@ -87,6 +87,11 @@
 			label = "ack";
 		};
 	};
+
+	wifi_pwrseq: wifi-pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		reset-gpios = <&gpio 33 GPIO_ACTIVE_LOW>;
+	};
 };
 
 &gpio {
@@ -593,17 +598,23 @@
 };
 
 &sdio1 {
-	max-frequency = <100000000>;
+	max-frequency = <50000000>;
 	assigned-clocks = <&clkgen JH7110_SDIO1_CLK_SDCARD>;
 	assigned-clock-rates = <50000000>;
-	card-detect-delay = <300>;
+	#address-cells = <1>;
+	#size-cells = <0>;
 	bus-width = <4>;
 	cap-sd-highspeed;
-	no-sdio;
-	no-mmc;
-	broken-cd;
-	post-power-on-delay-ms = <200>;
+	cap-sdio-irq;
+	cap-power-off-card;
+	non-removable;
+	mmc-pwrseq = <&wifi_pwrseq>;
 	status = "okay";
+
+	brcmf: bcmdhd_wlan {
+		compatible = "bcmdhd_wlan";
+		gpio_wl_host_wake = <&gpio 34 GPIO_ACTIVE_HIGH>;
+	};
 };
 
 &vin_sysctl {
