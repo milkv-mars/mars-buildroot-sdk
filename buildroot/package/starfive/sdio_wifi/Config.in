@@ -1,0 +1,6 @@
+
+config BR2_PACKAGE_SDIO_WIFI
+        bool "sdio wifi ap6256"
+        help
+          firmware and configuration file for sdio wifi ap6256
+
