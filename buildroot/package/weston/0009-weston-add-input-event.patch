@@ -1,0 +1,17 @@
+Weston ignore LIBINPUT_EVENT_POINTER_SCROLL_WHEEL(404) input event.
+
+Signed-off-by: Leo Lu <leo.lu@starfivetech.com>
+
+
+diff -purN a/libweston/libinput-device.c b/libweston/libinput-device.c
+--- a/libweston/libinput-device.c	2023-08-22 13:50:41.901537810 +0800
++++ b/libweston/libinput-device.c	2023-08-22 13:51:16.129770832 +0800
+@@ -565,6 +565,8 @@ evdev_device_process_event(struct libinp
+ 		handle_touch_frame(libinput_device,
+ 				   libinput_event_get_touch_event(event));
+ 		break;
++	case LIBINPUT_EVENT_POINTER_SCROLL_WHEEL:
++		return 0;
+ 	default:
+ 		handled = 0;
+ 		weston_log("unknown libinput event %d\n",
