@@ -197,6 +197,7 @@ static int dw_mci_starfive_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "WL_REG_ON didn't output high\n");
 			return -EIO;
 		}
+		dev_info(&pdev->dev, "+++++ milkv mars +++++: WL_REG_ON init OK\n");
 		mdelay(10);
 	}
 

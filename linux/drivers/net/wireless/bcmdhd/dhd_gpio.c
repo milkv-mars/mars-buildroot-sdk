@@ -231,6 +231,7 @@ dhd_wlan_init_gpio(wifi_adapter_info_t *adapter)
 #ifdef BCMDHD_DTS
 	char wlan_node[32];
 	struct device_node *root_node = NULL;
+	struct device_node *parent_node = NULL;
 #endif
 	int err = 0;
 	int gpio_wl_reg_on = -1;
@@ -258,7 +259,8 @@ dhd_wlan_init_gpio(wifi_adapter_info_t *adapter)
 #endif
 	DHD_DBGMSG("======== Get GPIO from DTS(%s) ========\n", wlan_node);
 	if (root_node) {
-		gpio_wl_reg_on = of_get_named_gpio(root_node, GPIO_WL_REG_ON_PROPNAME, 0);
+		parent_node = of_get_parent(root_node);
+		gpio_wl_reg_on = of_get_named_gpio(parent_node, GPIO_WL_REG_ON_PROPNAME, 0);
 #ifdef CUSTOMER_OOB
 		gpio_wl_host_wake = of_get_named_gpio(root_node, GPIO_WL_HOST_WAKE_PROPNAME, 0);
 #endif
@@ -271,14 +273,6 @@ dhd_wlan_init_gpio(wifi_adapter_info_t *adapter)
 #endif
 	}
 
-	if (gpio_wl_reg_on >= 0) {
-		err = gpio_request(gpio_wl_reg_on, "WL_REG_ON");
-		if (err < 0) {
-			DHD_DBGMSG("%s: gpio_request(%d) for WL_REG_ON failed %d\n",
-				__FUNCTION__, gpio_wl_reg_on, err);
-			gpio_wl_reg_on = -1;
-		}
-	}
 	adapter->gpio_wl_reg_on = gpio_wl_reg_on;
 
 #ifdef CUSTOMER_OOB

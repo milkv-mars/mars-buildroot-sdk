@@ -42,7 +42,7 @@ DHDCFLAGS = -Wall -Wstrict-prototypes -Wno-date-time                      \
 	-DUSE_NEW_RSPEC_DEFS                                                  \
 	-DWL_EXT_IAPSTA -DWL_ESCAN -DCCODE_LIST -DSUSPEND_EVENT               \
 	-DKEY_INSTALL_CHECK                                                   \
-	-DENABLE_INSMOD_NO_FW_LOAD
+#	-DENABLE_INSMOD_NO_FW_LOAD
 
 DHDOFILES = aiutils.o siutils.o sbutils.o                                 \
 	bcmutils.o bcmwifi_channels.o bcmxtlv.o bcm_app_utils.o bcmstdlib_s.o \
@@ -149,8 +149,8 @@ DHDOFILES += dbus.o dbus_usb.o dbus_usb_linux.o dhd_cdc.o dhd_wlfc.o
 endif
 
 ifeq ($(CONFIG_BCMDHD_NO_POWER_OFF),y)
-	DHDCFLAGS += -DENABLE_INSMOD_NO_FW_LOAD
-	DHDCFLAGS += -DENABLE_INSMOD_NO_POWER_OFF -DNO_POWER_OFF_AFTER_OPEN
+#	DHDCFLAGS += -DENABLE_INSMOD_NO_FW_LOAD
+#	DHDCFLAGS += -DENABLE_INSMOD_NO_POWER_OFF -DNO_POWER_OFF_AFTER_OPEN
 endif
 
 ifeq ($(CONFIG_BCMDHD_MULTIPLE_DRIVER),y)

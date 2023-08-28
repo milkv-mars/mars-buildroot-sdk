@@ -608,6 +608,7 @@
 	cap-sdio-irq;
 	cap-power-off-card;
 	non-removable;
+	keep-power-in-suspend;
 	mmc-pwrseq = <&wifi_pwrseq>;
 	status = "okay";
 
