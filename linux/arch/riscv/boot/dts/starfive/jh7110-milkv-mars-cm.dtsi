@@ -87,11 +87,6 @@
 			label = "ack";
 		};
 	};
-
-	wifi_pwrseq: wifi-pwrseq {
-		compatible = "mmc-pwrseq-simple";
-		reset-gpios = <&gpio 33 GPIO_ACTIVE_LOW>;
-	};
 };
 
 &gpio {
@@ -609,7 +604,7 @@
 	cap-power-off-card;
 	non-removable;
 	keep-power-in-suspend;
-	mmc-pwrseq = <&wifi_pwrseq>;
+	gpio_wl_reg_on = <&gpio 33 GPIO_ACTIVE_LOW>;
 	status = "okay";
 
 	brcmf: bcmdhd_wlan {
@@ -723,7 +718,7 @@
 &pwmdac {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pwmdac0_pins>;
-	status = "okay";
+	status = "disabled";
 };
 
 &i2srx_3ch {
@@ -739,7 +734,7 @@
 };
 
 &pwmdac_codec {
-	status = "okay";
+	status = "disabled";
 };
 
 &spi0 {
