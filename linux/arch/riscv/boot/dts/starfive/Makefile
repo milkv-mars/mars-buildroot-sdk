@@ -2,7 +2,7 @@
 subdir-y += evb-overlay vf2-overlay
 dtb-$(CONFIG_SOC_STARFIVE_JH7110) += jh7110-visionfive-v2.dtb	\
 				jh7110-milkv-mars.dtb		\
-				jh7110-milkv-mars-cm.dtb	\
+				jh7110-milkv-mars-cm-emmc.dtb	\
 				jh7110-evb.dtb			\
 				jh7110-fpga.dtb			\
 				jh7110-evb-can-pdm-pwmdac.dtb	\

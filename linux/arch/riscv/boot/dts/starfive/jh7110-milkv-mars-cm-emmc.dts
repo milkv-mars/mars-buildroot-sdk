@@ -9,7 +9,7 @@
 #include "codecs/sf_hdmi.dtsi"
 
 / {
-	model = "Milk-V Mars CM";
+	model = "Milk-V Mars CM eMMC";
 	compatible = "milk-v,mars", "starfive,jh7110";
 
 	gpio-restart {
@@ -56,43 +56,63 @@
 		};
 	};
 
-	sdcard0_pins: sdcard0-pins {
-		 sdcard0-pins-rest {
-			starfive,pins = <PAD_GPIO24>;
-			starfive,pinmux = <PAD_GPIO24_FUNC_SEL 0>;
-			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)) | GPIO_DS(3) | GPIO_SLEW(1))>;
+	mmc0_pins: mmc0-pins {
+		 mmc0-pins-rest {
+			starfive,pins = <PAD_GPIO62>;
+			starfive,pinmux = <PAD_GPIO62_FUNC_SEL 0>;
+			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)))>;
 			starfive,pin-gpio-dout = <GPO_SDIO0_RST_N>;
 			starfive,pin-gpio-doen = <OEN_LOW>;
 		};
 
-		sdcard0-pins-cLK {
+		mmc0-pins-cLK {
 			starfive,pins = <PAD_SD0_CLK>;
-			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)) | GPIO_DS(3) | GPIO_SLEW(1))>;
+			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)) | GPIO_DS(2) | GPIO_SLEW(1))>;
 		};
 
-		sdcard0-pins-cmd {
+		mmc0-pins-cmd {
 			starfive,pins = <PAD_SD0_CMD>;
-			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)) | GPIO_DS(3) | GPIO_SLEW(1))>;
+			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)) | GPIO_DS(1))>;
 		};
 
-		sdcard0-pins-data0 {
+		mmc0-pins-data0 {
 			starfive,pins = <PAD_SD0_DATA0>;
-			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)) | GPIO_DS(3) | GPIO_SLEW(1))>;
+			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)) | GPIO_DS(1))>;
 		};
 
-		sdcard0-pins-data1 {
+		mmc0-pins-data1 {
 			starfive,pins = <PAD_SD0_DATA1>;
-			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)) | GPIO_DS(3) | GPIO_SLEW(1))>;
+			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)) | GPIO_DS(1))>;
 		};
 
-		sdcard0-pins-data2 {
+		mmc0-pins-data2 {
 			starfive,pins = <PAD_SD0_DATA2>;
-			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)) | GPIO_DS(3) | GPIO_SLEW(1))>;
+			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)) | GPIO_DS(1))>;
 		};
 
-		sdcard0-pins-data3 {
+		mmc0-pins-data3 {
 			starfive,pins = <PAD_SD0_DATA3>;
-			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)) | GPIO_DS(3) | GPIO_SLEW(1))>;
+			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)) | GPIO_DS(1))>;
+		};
+
+		mmc0-pins-data4 {
+			starfive,pins = <PAD_SD0_DATA4>;
+			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)) | GPIO_DS(1))>;
+		};
+
+		mmc0-pins-data5 {
+			starfive,pins = <PAD_SD0_DATA5>;
+			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)) | GPIO_DS(1))>;
+		};
+
+		mmc0-pins-data6 {
+			starfive,pins = <PAD_SD0_DATA6>;
+			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)) | GPIO_DS(1))>;
+		};
+
+		mmc0-pins-data7 {
+			starfive,pins = <PAD_SD0_DATA7>;
+			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)) | GPIO_DS(1))>;
 		};
 	};
 
@@ -208,15 +228,7 @@
 
 &sdio0 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&sdcard0_pins>;
-	max-frequency = <100000000>;
-	card-detect-delay = <300>;
-	bus-width = <4>;
-	no-sdio;
-	no-mmc;
-	broken-cd;
-	cap-sd-highspeed;
-	post-power-on-delay-ms = <200>;
+	pinctrl-0 = <&mmc0_pins>;
 	status = "okay";
 };
 
