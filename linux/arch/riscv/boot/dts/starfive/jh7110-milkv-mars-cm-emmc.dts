@@ -70,24 +70,6 @@
 		};
 	};
 
-	i2c2_pins: i2c2-pins {
-		i2c2-pins-scl {
-			starfive,pins = <PAD_GPIO3>;
-			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)))>;
-			starfive,pin-gpio-dout = <GPO_LOW>;
-			starfive,pin-gpio-doen = <OEN_I2C2_IC_CLK_OE>;
-			starfive,pin-gpio-din =  <GPI_I2C2_IC_CLK_IN_A>;
-		};
-
-		i2c2-pins-sda {
-			starfive,pins = <PAD_GPIO2>;
-			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)))>;
-			starfive,pin-gpio-dout = <GPO_LOW>;
-			starfive,pin-gpio-doen = <OEN_I2C2_IC_DATA_OE>;
-			starfive,pin-gpio-din =  <GPI_I2C2_IC_DATA_IN_A>;
-		};
-	};
-
 	mmc0_pins: mmc0-pins {
 		 mmc0-pins-rest {
 			starfive,pins = <PAD_GPIO62>;
@@ -256,12 +238,6 @@
         pinctrl-names = "default";
         pinctrl-0 = <&uart1_pins>;
         status = "okay";
-};
-
-&i2c2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c2_pins>;
-	status = "disabled";
 };
 
 &sdio0 {
