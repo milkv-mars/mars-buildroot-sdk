@@ -1,0 +1,5 @@
+config BR2_PACKAGE_AP6256_BLUETOOTH
+    bool "AP6256 Bluetooth"
+    help
+      Firmware files for AP6256 Wireless bluetooth support.
+

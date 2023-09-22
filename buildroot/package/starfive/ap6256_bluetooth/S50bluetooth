@@ -1,0 +1,38 @@
+#! /bin/sh
+
+set -e
+
+case "$1" in
+  start)
+    printf "Download bluetooth firmware: "
+    echo 18 > /sys/class/gpio/export
+    echo out > /sys/class/gpio/gpio18/direction
+
+    echo 0 > /sys/class/gpio/gpio18/value
+    sleep 1
+    echo 1 > /sys/class/gpio/gpio18/value
+
+    brcm_patchram_plus --enable_hci --no2bytes --tosleep 200000 --baudrate 115200 --patchram /lib/firmware/BCM4345C5.hcd /dev/ttyS1 &
+    echo "OK"
+    ;;
+  stop)
+    echo 0 > /sys/class/gpio/gpio18/value
+    echo 18 > /sys/class/gpio/unexport
+    killall brcm_patchram_plus
+    echo "OK"
+    ;;
+  restart|force-reload)
+    echo "Restarting bluetooth: "
+    $0 stop
+    sleep 1
+    $0 start
+    echo ""
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart|force-reload}" >&2
+    exit 1
+    ;;
+esac
+
+exit 0
+

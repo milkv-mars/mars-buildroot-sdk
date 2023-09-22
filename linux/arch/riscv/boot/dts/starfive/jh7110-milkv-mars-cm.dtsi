@@ -349,6 +349,10 @@
 	status = "okay";
 };
 
+&uart1 {
+        status = "okay";
+};
+
 &dma {
 	status = "okay";
 };
@@ -382,7 +386,7 @@
 	i2c-sda-falling-time-ns = <510>;
 	i2c-scl-falling-time-ns = <510>;
 	auto_calc_scl_lhcnt;
-	status = "okay";
+	status = "disabled";
 
 };
 
@@ -572,7 +576,7 @@
 	auto_calc_scl_lhcnt;
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c6_pins>;
-	status = "okay";
+	status = "disabled";
 
 };
 

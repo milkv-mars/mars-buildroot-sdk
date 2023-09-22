@@ -38,6 +38,38 @@
 		};
 	};
 
+	uart1_pins: uart1-pins {
+		uart1-pins-tx {
+			starfive,pins = <PAD_GPIO16>;
+			starfive,pinmux = <PAD_GPIO16_FUNC_SEL 0>;
+			starfive,pin-ioconfig = <IO(GPIO_IE(1) | GPIO_DS(3))>;
+			starfive,pin-gpio-dout = <GPO_UART1_SOUT>;
+			starfive,pin-gpio-doen = <OEN_LOW>;
+		};
+
+		uart1-pins-rx {
+			starfive,pins = <PAD_GPIO17>;
+			starfive,pinmux = <PAD_GPIO17_FUNC_SEL 0>;
+			starfive,pin-ioconfig = <IO(GPIO_IE(1) | GPIO_PU(1))>;
+			starfive,pin-gpio-doen = <OEN_HIGH>;
+			starfive,pin-gpio-din =  <GPI_UART1_SIN>;
+		};
+
+		uart1-pins-cts {
+			starfive,pins = <PAD_GPIO3>;
+			starfive,pin-ioconfig = <IO(GPIO_IE(1))>;
+			starfive,pin-gpio-doen = <OEN_HIGH>;
+			starfive,pin-gpio-din =  <GPI_UART1_CTS_N>;
+		};
+
+		uart1-pins-rts {
+			starfive,pins = <PAD_GPIO2>;
+			starfive,pin-ioconfig = <IO(GPIO_IE(1))>;
+			starfive,pin-gpio-dout = <GPO_UART1_RTS_N>;
+			starfive,pin-gpio-doen = <OEN_LOW>;
+		};
+	};
+
 	i2c2_pins: i2c2-pins {
 		i2c2-pins-scl {
 			starfive,pins = <PAD_GPIO3>;
@@ -220,10 +252,16 @@
 	status = "okay";
 };
 
+&uart1 {
+        pinctrl-names = "default";
+        pinctrl-0 = <&uart1_pins>;
+        status = "okay";
+};
+
 &i2c2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c2_pins>;
-	status = "okay";
+	status = "disabled";
 };
 
 &sdio0 {
