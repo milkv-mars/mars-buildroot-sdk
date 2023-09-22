@@ -79,13 +79,13 @@ typedef struct _SF_CODAJ12_FUNCTIONS
     void *(*AllocateOneFrameBuffer)
     // (Uint32 instIdx, Uint32 size, Uint32 *bufferIndex);
     (Uint32 instIdx, FrameFormat subsample, CbCrInterLeave cbcrIntlv,
-     PackedFormat packed, Uint32 rotation, BOOL scalerOn, Uint32 width, Uint32 height, Uint32 bitDepth, Uint32 *bufferIndex);
+     PackedFormat packed, Uint32 rotation, BOOL scalerOn, Uint32 width, Uint32 height, Uint32 bitDepth, Uint32 bufferIndex);
     int (*SaveYuvImageHelper)(Uint8* pYuv, FrameBuffer* fb, CbCrInterLeave interLeave, PackedFormat packed,
                         Uint32 picWidth, Uint32 picHeight, Uint32 bitDepth);
     int (*SaveYuvImageHelperDma)(Uint8* pYuv, FrameBuffer* fb, CbCrInterLeave interLeave, PackedFormat packed,
                         Uint32 picWidth, Uint32 picHeight, Uint32 bitDepth);
-    int (*FreeOneFrameBuffer)(Uint32 instIdx, void* virt_addr);
     void (*FreeFrameBuffer)(int instIdx);
+    void (*FreeOneFrameBuffer)(int instIdx, unsigned int bufferIndex);
     FRAME_BUF *(*GetFrameBuffer)(int instIdx, int idx);
     Uint32 (*GetFrameBufferCount)(int instIdx);
     BOOL (*AttachOneFrameBuffer)(Uint32 instIdx, FrameFormat subsample, CbCrInterLeave cbcrIntlv, PackedFormat packed,
@@ -152,7 +152,7 @@ extern "C"
 OMX_ERRORTYPE GetStateMjpegCommon(OMX_IN OMX_HANDLETYPE hComponent, OMX_OUT OMX_STATETYPE *pState);
 OMX_ERRORTYPE InitMjpegStructorCommon(SF_OMX_COMPONENT *hComponent);
 OMX_BOOL AttachOutputBuffer(SF_OMX_COMPONENT *pSfOMXComponent, OMX_U8* pBuffer, OMX_U32 nSizeBytes);
-OMX_U8* AllocateOutputBuffer(SF_OMX_COMPONENT *pSfOMXComponent, OMX_U32 nSizeBytes);
+OMX_U8* AllocateOutputBuffer(SF_OMX_COMPONENT *pSfOMXComponent, OMX_U32 nBufferIndex, OMX_U32 nSizeBytes);
 void ThreadExit(void *value_ptr);
 void CodaJ12FlushBuffer(SF_OMX_COMPONENT *pSfOMXComponent, OMX_U32 nPortNumber);
 

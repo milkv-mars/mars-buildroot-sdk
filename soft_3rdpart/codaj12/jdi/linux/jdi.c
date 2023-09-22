@@ -645,7 +645,7 @@ int jdi_allocate_dma_memory(jpu_buffer_t *vb)
     vb->base = (unsigned long)jdb.base;
 
     //map to virtual address
-    jdb.virt_addr = (unsigned long)mmap(NULL, jdb.size, PROT_READ | PROT_WRITE, MAP_SHARED, jdi->jpu_fd, MEM2SYS(jdb.phys_addr));
+    jdb.virt_addr = (unsigned long)mmap(NULL, jdb.size, PROT_READ | PROT_WRITE, MAP_SHARED, jdi->jpu_fd, jdb.phys_addr);
     if (jdb.virt_addr == (unsigned long)MAP_FAILED) {
         memset(vb, 0x00, sizeof(jpu_buffer_t));
         return -1;

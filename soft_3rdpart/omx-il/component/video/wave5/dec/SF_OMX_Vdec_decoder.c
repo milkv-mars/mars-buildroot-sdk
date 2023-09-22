@@ -14,7 +14,6 @@
 
 #define DEC_StopThread OMX_CommandMax
 
-extern OMX_TICKS gInitTimeStamp;
 
 typedef struct DEC_CMD
 {
@@ -81,8 +80,6 @@ static void OnEventArrived(Component com, unsigned long event, void *data, void 
     OMX_BUFFERHEADERTYPE **ppBuffer;
     OMX_BUFFERHEADERTYPE *pBuffer;
     SF_OMX_BUF_INFO *pBufInfo;
-    static OMX_U32 dec_cnt = 0;
-    static struct timeval tv_old = {0};
     OMX_U32 fps = 0;
     OMX_U64 diff_time = 0; // ms
     FunctionIn();
@@ -195,23 +192,23 @@ static void OnEventArrived(Component com, unsigned long event, void *data, void 
         }
 
         gettimeofday(&tv, NULL);
-        if (gInitTimeStamp == 0)
+	if (pSfVideoImplement->initTimeStamp == 0)
         {
-            gInitTimeStamp = tv.tv_sec * 1000000 + tv.tv_usec;
+            pSfVideoImplement->initTimeStamp = tv.tv_sec * 1000000 + tv.tv_usec;
         }
         pOMXBuffer->nFilledLen = pPortContainerExternal->nFilledLen;
-        pOMXBuffer->nTimeStamp = tv.tv_sec * 1000000 + tv.tv_usec - gInitTimeStamp;
+        pOMXBuffer->nTimeStamp = tv.tv_sec * 1000000 + tv.tv_usec - pSfVideoImplement->initTimeStamp;
 
         pBufInfo = pOMXBuffer->pOutputPortPrivate;
 
         // Following is to print the decoding fps
-        if (dec_cnt == 0) {
-            tv_old = tv;
+        if (pSfVideoImplement->fpsCnt == 0) {
+            pSfVideoImplement->fpsStarTime = tv;
         }
-        if (dec_cnt++ >= 50) {
-            diff_time = (tv.tv_sec - tv_old.tv_sec) * 1000 + (tv.tv_usec - tv_old.tv_usec) / 1000;
-            fps = 1000  * (dec_cnt - 1) / diff_time;
-            dec_cnt = 0;
+        if (pSfVideoImplement->fpsCnt++ >= 50) {
+            diff_time = (tv.tv_sec - pSfVideoImplement->fpsStarTime.tv_sec) * 1000 + (tv.tv_usec - pSfVideoImplement->fpsStarTime.tv_usec) / 1000;
+            fps = 1000  * (pSfVideoImplement->fpsCnt - 1) / diff_time;
+            pSfVideoImplement->fpsCnt = 0;
             LOG(SF_LOG_WARN, "Decoding fps: %d \r\n", fps);
         }
         if (pPortContainerExternal->nFlags & 0x1)
@@ -470,7 +467,7 @@ static OMX_ERRORTYPE SF_OMX_FillThisBuffer(
     pPortContainerExternal->nFilledLen = pBuffer->nAllocLen;
     pPortContainerExternal->pAppPrivate = (void*)pBuffer;
 
-    if (gInitTimeStamp != 0 && pSfOMXComponent->memory_optimization)
+    if (pSfVideoImplement->initTimeStamp != 0 && pSfOMXComponent->memory_optimization)
     {
         int clear = pSfVideoImplement->frame_array[pSfVideoImplement->frame_array_index];
         pSfVideoImplement->functions->Render_DecClrDispFlag(pRendererComponent->context, clear);
@@ -761,6 +758,7 @@ static OMX_ERRORTYPE SF_OMX_GetParameter(
     OMX_ERRORTYPE ret = OMX_ErrorNone;
     OMX_COMPONENTTYPE *pOMXComponent = (OMX_COMPONENTTYPE *)hComponent;
     SF_OMX_COMPONENT *pSfOMXComponent = pOMXComponent->pComponentPrivate;
+    SF_WAVE5_IMPLEMEMT *pSfVideoImplement = (SF_WAVE5_IMPLEMEMT *)pSfOMXComponent->componentImpl;
     FunctionIn();
     LOG(SF_LOG_INFO, "Get parameter on index %X\r\n", nParamIndex);
     if (hComponent == NULL || ComponentParameterStructure == NULL)
@@ -890,6 +888,18 @@ static OMX_ERRORTYPE SF_OMX_GetParameter(
             ret = OMX_ErrorBadPortIndex;
     }
         break;
+    case OMX_IndexParamVideoProfileLevelCurrent:
+    {
+        OMX_VIDEO_PARAM_PROFILELEVELTYPE *pSrcProfileLevel = (OMX_VIDEO_PARAM_PROFILELEVELTYPE *)ComponentParameterStructure;
+        OMX_U32 portIndex = pSrcProfileLevel->nPortIndex;
+        OMX_VIDEO_PARAM_AVCTYPE *pAVCComponent = NULL;
+        if (portIndex >= 2)
+            ret = OMX_ErrorBadPortIndex;
+        pAVCComponent = &pSfVideoImplement->AVCComponent[portIndex];
+        pSrcProfileLevel->eProfile = pAVCComponent->eProfile;
+        pSrcProfileLevel->eLevel = pAVCComponent->eLevel;
+    }
+        break;
 
     default:
         ret = OMX_ErrorUnsupportedIndex;
@@ -1015,7 +1025,17 @@ static OMX_ERRORTYPE SF_OMX_SetParameter(
 
             pInputPort->format.video.nStride = width;
             pInputPort->format.video.nSliceHeight = height;
-            pInputPort->nBufferSize = width * height * 2;
+            pInputPort->nBufferSize = width * height / 2;
+
+            pOutputPort->format.video.nFrameWidth = width;
+            pOutputPort->format.video.nFrameHeight = height;
+            pOutputPort->format.video.nStride = width;
+            pOutputPort->format.video.nSliceHeight = height;
+            pTestDecConfig->scaleDownWidth = VPU_CEIL(width, 2);
+            pTestDecConfig->scaleDownHeight = VPU_CEIL(height, 2);
+            if (width && height)
+                    pOutputPort->nBufferSize = (width * height * 3) / 2;
+            LOG(SF_LOG_INFO, "Set scale = %d, %d\r\n", pTestDecConfig->scaleDownWidth , pTestDecConfig->scaleDownHeight);
         }
         else if (portIndex == 1)
         {
@@ -1131,6 +1151,18 @@ static OMX_ERRORTYPE SF_OMX_SetParameter(
         OMX_U32 portIndex = bufferSupplier->nPortIndex;
         if (portIndex >= 2)
             ret = OMX_ErrorBadPortIndex;
+    }
+        break;
+    case OMX_IndexParamVideoProfileLevelCurrent:
+    {
+        OMX_VIDEO_PARAM_PROFILELEVELTYPE *pSrcProfileLevel = (OMX_VIDEO_PARAM_PROFILELEVELTYPE *)ComponentParameterStructure;
+        OMX_U32 portIndex = pSrcProfileLevel->nPortIndex;
+        OMX_VIDEO_PARAM_AVCTYPE *pAVCComponent = NULL;
+        if (portIndex >= 2)
+            ret = OMX_ErrorBadPortIndex;
+        pAVCComponent = &pSfVideoImplement->AVCComponent[portIndex];
+        pAVCComponent->eProfile = pSrcProfileLevel->eProfile;
+        pAVCComponent->eLevel = pSrcProfileLevel->eLevel;
     }
         break;
 
@@ -1523,6 +1555,12 @@ static OMX_ERRORTYPE SF_OMX_FreeBuffer(
     {
         if(pBufferHdr->pBuffer)
             free(pBufferHdr->pBuffer);
+    }
+    else if(pBufInfo->type == SF_BUFFER_DMA)
+    {
+        SF_WAVE5_IMPLEMEMT *pSfVideoImplement = (SF_WAVE5_IMPLEMEMT *)pSfOMXComponent->componentImpl;
+        ComponentImpl *pComponentRender = (ComponentImpl *)pSfVideoImplement->hSFComponentRender;
+        pSfVideoImplement->functions->FreeFrameBuffer2(pComponentRender, pBufferHdr->pBuffer);
     }
 
     pSfOMXComponent->pBufferArray[nPortIndex][pBufInfo->index] = NULL;
@@ -2041,7 +2079,7 @@ static OMX_ERRORTYPE SF_OMX_ComponentConstructor(SF_OMX_COMPONENT *pSfOMXCompone
     OMX_ERRORTYPE ret = OMX_ErrorNone;
     FunctionIn();
 
-    if (nInstance >= 1)
+    if (nInstance >= 4)
     {
         ret = OMX_ErrorInsufficientResources;
         goto EXIT;
@@ -2091,6 +2129,8 @@ static OMX_ERRORTYPE SF_OMX_ComponentConstructor(SF_OMX_COMPONENT *pSfOMXCompone
         pSfVideoImplement->frame_array[i] = -1;
     }
     pSfVideoImplement->frame_array_index = 0;
+    pSfVideoImplement->fpsCnt = 0;
+    pSfVideoImplement->initTimeStamp = 0;
 
     pSfVideoImplement->CmdQueue = SF_Queue_Create(20, sizeof(DEC_CMD));
     if (NULL == pSfVideoImplement->CmdQueue)

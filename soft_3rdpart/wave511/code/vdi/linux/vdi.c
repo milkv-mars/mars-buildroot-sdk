@@ -478,7 +478,7 @@ int vdi_allocate_common_memory(unsigned long core_idx)
         return -1;
     }
 
-    vdb.virt_addr = (unsigned long)mmap(NULL, vdb.size, PROT_READ | PROT_WRITE, MAP_SHARED, vdi->vpu_fd, DRAM_MEM2SYS(vdb.phys_addr));
+    vdb.virt_addr = (unsigned long)mmap(NULL, vdb.size, PROT_READ | PROT_WRITE, MAP_SHARED, vdi->vpu_fd, vdb.phys_addr);
     if ((void *)vdb.virt_addr == MAP_FAILED)
     {
         VLOG(ERR, "[VDI] fail to map common memory phyaddr=%#lx, size = %d\n", vdb.phys_addr, vdb.size);
@@ -1124,7 +1124,7 @@ void* vdi_remap_vaddr(unsigned long coreIndex, unsigned long virtAddress, unsign
     vdi_virt_to_phys(coreIndex, &vb);
 
     vaddr = (void *)mmap(NULL, vb.size, PROT_READ | PROT_WRITE,
-        MAP_SHARED, vdi->vpu_fd, DRAM_MEM2SYS(vb.phys_addr));
+        MAP_SHARED, vdi->vpu_fd, vb.phys_addr);
 
     return vaddr;
 }
@@ -1159,7 +1159,7 @@ int vdi_allocate_dma_memory(unsigned long core_idx, vpu_buffer_t *vb, int memTyp
 
     //map to virtual address
     vdb.virt_addr = (unsigned long)mmap(NULL, vdb.size, PROT_READ | PROT_WRITE,
-        MAP_SHARED, vdi->vpu_fd, DRAM_MEM2SYS(vdb.phys_addr));
+        MAP_SHARED, vdi->vpu_fd, vdb.phys_addr);
     if ((void *)vdb.virt_addr == MAP_FAILED)
     {
         memset(vb, 0x00, sizeof(vpu_buffer_t));

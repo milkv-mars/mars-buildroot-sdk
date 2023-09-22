@@ -97,6 +97,7 @@ typedef struct _SF_COMPONENT_FUNCTIONS
     int (*GetMaxLogLevel)(void);
     // FrameBuffer
     void* (*AllocateFrameBuffer2)(ComponentImpl* com, Uint32 size);
+    void (*FreeFrameBuffer2)(ComponentImpl* com, void* pBuffer);
     BOOL (*AttachDMABuffer)(ComponentImpl* com, Uint64 virtAddress, Uint32 size);
     void (*SetRenderTotalBufferNumber)(ComponentImpl* com, Uint32 number);
     Uint32 (*GetRenderTotalBufferNumber)(ComponentImpl* com);
@@ -126,6 +127,9 @@ typedef struct _SF_WAVE5_IMPLEMEMT
     OMX_BOOL bCmdRunning;
     OMX_U64 frame_array[MAX_INDEX];
     OMX_U32 frame_array_index;
+    OMX_TICKS initTimeStamp;
+    OMX_U32 fpsCnt;
+    struct timeval fpsStarTime;
     OMX_VIDEO_PARAM_AVCTYPE AVCComponent[2];
     OMX_VIDEO_PARAM_HEVCTYPE HEVCComponent[2];
 }SF_WAVE5_IMPLEMEMT;

@@ -69,16 +69,16 @@ OMX_ERRORTYPE ComponentClearCommon(SF_OMX_COMPONENT *pSfOMXComponent)
         pSfVideoImplement->functions->ComponentDestroy(pSfVideoImplement->hSFComponentFeeder, NULL);
     }
 
-    if (pSfVideoImplement->hSFComponentExecoder)
-    {
-        pSfVideoImplement->functions->ComponentRelease(pSfVideoImplement->hSFComponentExecoder);
-        pSfVideoImplement->functions->ComponentDestroy(pSfVideoImplement->hSFComponentExecoder, NULL);
-    }
-
     if (pSfVideoImplement->hSFComponentRender)
     {
         pSfVideoImplement->functions->ComponentRelease(pSfVideoImplement->hSFComponentRender);
         pSfVideoImplement->functions->ComponentDestroy(pSfVideoImplement->hSFComponentRender, NULL);
+    }
+
+    if (pSfVideoImplement->hSFComponentExecoder)
+    {
+        pSfVideoImplement->functions->ComponentRelease(pSfVideoImplement->hSFComponentExecoder);
+        pSfVideoImplement->functions->ComponentDestroy(pSfVideoImplement->hSFComponentExecoder, NULL);
     }
 
     pSfVideoImplement->functions->DeInitLog();
@@ -553,6 +553,7 @@ static void sf_get_component_functions(SF_COMPONENT_FUNCTIONS *funcs, OMX_PTR *s
 
     //Renderer
     funcs->AllocateFrameBuffer2 = dlsym(sohandle, "AllocateFrameBuffer2");
+    funcs->FreeFrameBuffer2 = dlsym(sohandle, "FreeFrameBuffer2");
     funcs->AttachDMABuffer = dlsym(sohandle, "AttachDMABuffer");
     funcs->SetRenderTotalBufferNumber = dlsym(sohandle, "SetRenderTotalBufferNumber");
     funcs->GetRenderTotalBufferNumber = dlsym(sohandle, "GetRenderTotalBufferNumber");

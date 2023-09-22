@@ -1,0 +1,5 @@
+config BR2_PACKAGE_HIFI4_SOF
+	bool "hifi4-sof"
+	help
+	 hifi4-sof package
+

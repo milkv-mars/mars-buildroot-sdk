@@ -278,7 +278,7 @@ static OMX_ERRORTYPE SF_OMX_AllocateBuffer(
             {
                 if (pSfOMXComponent->memory_optimization)
                 {
-                    temp_bufferHeader->pBuffer = AllocateOutputBuffer(pSfOMXComponent, nSizeBytes);
+                    temp_bufferHeader->pBuffer = AllocateOutputBuffer(pSfOMXComponent, i, nSizeBytes);
                 }
 
                 if (temp_bufferHeader->pBuffer == NULL)
@@ -2134,6 +2134,11 @@ static OMX_ERRORTYPE SF_OMX_FreeBuffer(
     {
         if(pBufferHdr->pBuffer)
             free(pBufferHdr->pBuffer);
+    }
+    else if (pBufInfo->type == SF_BUFFER_DMA)
+    {
+        SF_CODAJ12_IMPLEMEMT *pSfCodaj12Implement = pSfOMXComponent->componentImpl;
+        pSfCodaj12Implement->functions->FreeOneFrameBuffer(pSfCodaj12Implement->instIdx, pBufInfo->index);
     }
 
     pSfOMXComponent->pBufferArray[nPortIndex][pBufInfo->index] = NULL;
