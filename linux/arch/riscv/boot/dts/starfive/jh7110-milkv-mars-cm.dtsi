@@ -225,8 +225,8 @@
 		};
 
 		pwm_ch2-pins {
-			starfive,pins = <PAD_GPIO24>;
-			starfive,pinmux = <PAD_GPIO24_FUNC_SEL 0>;
+			starfive,pins = <PAD_GPIO55>;
+			starfive,pinmux = <PAD_GPIO55_FUNC_SEL 0>;
 			starfive,pin-ioconfig = <IO(GPIO_IE(1))>;
 			starfive,pin-gpio-dout = <GPO_PTC0_PWM_2>;
 			starfive,pin-gpio-doen = <OEN_PTC0_PWM_2_OE_N>;
