@@ -93,7 +93,7 @@
 
 	mmc0_pins: mmc0-pins {
 		 mmc0-pins-rest {
-			pinmux = <GPIOMUX(62, GPOUT_SYS_SDIO0_RST,
+			pinmux = <GPIOMUX(22, GPOUT_SYS_SDIO0_RST,
 						GPOEN_ENABLE, GPI_NONE)>;
 			bias-pull-up;
 			drive-strength = <12>;
@@ -297,7 +297,7 @@
 	assigned-clocks = <&clkgen JH7110_SDIO0_CLK_SDCARD>;
 	assigned-clock-rates = <50000000>;
 	fifo-depth = <32>;
-	bus-width = <8>;
+	bus-width = <4>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&mmc0_pins>;
 	status = "okay";
