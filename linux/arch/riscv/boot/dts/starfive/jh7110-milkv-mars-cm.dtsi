@@ -29,7 +29,6 @@
 		i2c2 = &i2c2;
 		i2c3 = &i2c3;
 		i2c4 = &i2c4;
-		i2c5 = &i2c5;
 		i2c6 = &i2c6;
 	};
 
@@ -149,30 +148,10 @@
 		};
 	};
 
-	i2c5_pins: i2c5-pins {
-		i2c5-pins-scl {
-			starfive,pins = <PAD_GPIO19>;
-			starfive,pinmux = <PAD_GPIO19_FUNC_SEL 0>;
-			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)))>;
-			starfive,pin-gpio-dout = <GPO_LOW>;
-			starfive,pin-gpio-doen = <OEN_I2C5_IC_CLK_OE>;
-			starfive,pin-gpio-din =  <GPI_I2C5_IC_CLK_IN_A>;
-		};
-
-		i2c5-pins-sda {
-			starfive,pins = <PAD_GPIO20>;
-			starfive,pinmux = <PAD_GPIO20_FUNC_SEL 0>;
-			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)))>;
-			starfive,pin-gpio-dout = <GPO_LOW>;
-			starfive,pin-gpio-doen = <OEN_I2C5_IC_DATA_OE>;
-			starfive,pin-gpio-din =  <GPI_I2C5_IC_DATA_IN_A>;
-		};
-	};
-
 	i2c6_pins: i2c6-pins {
 		i2c6-pins-scl {
-			starfive,pins = <PAD_GPIO16>;
-			starfive,pinmux = <PAD_GPIO16_FUNC_SEL 0>;
+			starfive,pins = <PAD_GPIO19>;
+			starfive,pinmux = <PAD_GPIO19_FUNC_SEL 0>;
 			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)))>;
 			starfive,pin-gpio-dout = <GPO_LOW>;
 			starfive,pin-gpio-doen = <OEN_I2C6_IC_CLK_OE>;
@@ -180,8 +159,8 @@
 		};
 
 		i2c6-pins-sda {
-			starfive,pins = <PAD_GPIO17>;
-			starfive,pinmux = <PAD_GPIO17_FUNC_SEL 0>;
+			starfive,pins = <PAD_GPIO20>;
+			starfive,pinmux = <PAD_GPIO20_FUNC_SEL 0>;
 			starfive,pin-ioconfig = <IO(GPIO_IE(1) | (GPIO_PU(1)))>;
 			starfive,pin-gpio-dout = <GPO_LOW>;
 			starfive,pin-gpio-doen = <OEN_I2C6_IC_DATA_OE>;
@@ -438,14 +417,14 @@
 
 };
 
-&i2c5 {
+&i2c6 {
 	clock-frequency = <100000>;
 	i2c-sda-hold-time-ns = <300>;
 	i2c-sda-falling-time-ns = <510>;
 	i2c-scl-falling-time-ns = <510>;
 	auto_calc_scl_lhcnt;
 	pinctrl-names = "default";
-	pinctrl-0 = <&i2c5_pins>;
+	pinctrl-0 = <&i2c6_pins>;
 	status = "okay";
 
 	eeprom@50 {
@@ -619,18 +598,6 @@
 			};
 		};
 	};
-};
-
-&i2c6 {
-	clock-frequency = <100000>;
-	i2c-sda-hold-time-ns = <300>;
-	i2c-sda-falling-time-ns = <510>;
-	i2c-scl-falling-time-ns = <510>;
-	auto_calc_scl_lhcnt;
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c6_pins>;
-	status = "disabled";
-
 };
 
 &sdio0 {
