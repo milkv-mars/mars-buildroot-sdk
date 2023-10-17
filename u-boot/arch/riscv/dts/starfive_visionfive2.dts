@@ -21,7 +21,7 @@
 		ethernet1=&gmac1;
 		mmc0=&sdio0;
 		mmc1=&sdio1;
-		i2c0 = &i2c5;
+		i2c0 = &i2c6;
 	};
 
 	chosen {
@@ -259,14 +259,14 @@
 		};
 	};
 
-	i2c5_pins: i2c5-0 {
+	i2c6_pins: i2c6-0 {
 		i2c-pins {
 			pinmux = <GPIOMUX(19, GPOUT_LOW,
-				  GPOEN_SYS_I2C5_CLK,
-				  GPI_SYS_I2C5_CLK)>,
+				  GPOEN_SYS_I2C6_CLK,
+				  GPI_SYS_I2C6_CLK)>,
 				 <GPIOMUX(20, GPOUT_LOW,
-				  GPOEN_SYS_I2C5_DATA,
-				  GPI_SYS_I2C5_DATA)>;
+				  GPOEN_SYS_I2C6_DATA,
+				  GPI_SYS_I2C6_DATA)>;
 			bias-disable; /* external pull-up */
 			input-enable;
 			input-schmitt-enable;
@@ -357,7 +357,7 @@
 	status = "okay";
 };
 
-&i2c5 {
+&i2c6 {
 	clock-frequency = <100000>;
 	i2c-sda-hold-time-ns = <300>;
 	i2c-sda-falling-time-ns = <3000>;
