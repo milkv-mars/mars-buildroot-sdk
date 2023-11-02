@@ -640,7 +640,7 @@ static int sft_rtc_probe(struct platform_device *pdev)
 	srtc->rtc_dev->ops = &starfive_rtc_ops;
 	device_init_wakeup(dev, true);
 
-	desc = irq_to_desc(srtc->rtc_irq);
+	desc = irq_data_to_desc(irq_get_irq_data(srtc->rtc_irq));
 	irq_desc_get_chip(desc)->flags = IRQCHIP_SKIP_SET_WAKE;
 
 	/* Always use 24-hour mode and keep the RTC values */
