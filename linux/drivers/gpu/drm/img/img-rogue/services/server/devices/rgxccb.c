@@ -47,7 +47,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "allocmem.h"
 #include "devicemem.h"
 #include "rgxfwutils.h"
-
 #include "osfunc.h"
 #include "rgxccb.h"
 #include "rgx_memallocflags.h"
@@ -645,16 +644,31 @@ PVRSRV_ERROR RGXCreateCCB(PVRSRV_RGXDEV_INFO	*psDevInfo,
 	if (BITMASK_HAS(psDevInfo->ui32DeviceFlags, RGXKM_DEVICE_STATE_CCB_GROW_EN))
 	{
 		PHYS_HEAP *psPhysHeap = psDevInfo->psDeviceNode->apsPhysHeap[PVRSRV_PHYS_HEAP_FW_MAIN];
-		PHYS_HEAP_POLICY uiHeapPolicy = PhysHeapGetPolicy(psPhysHeap);
+		PHYS_HEAP_TYPE eHeapType = PhysHeapGetType(psPhysHeap);
 
 		psClientCCB->ui32VirtualAllocSize = ui32VirtualAllocSize;
 
-		if (uiHeapPolicy != PHYS_HEAP_POLICY_ALLOC_ALLOW_NONCONTIG)
+		/*
+		 * Growing CCB is doubling the size. Last grow would require only ui32NumVirtChunks/2 new chunks
+		 * because another ui32NumVirtChunks/2 is already allocated.
+		 * Sometimes initial chunk count would be higher (when CCB size is equal to CCB maximum size) so MAX is needed.
+		 */
+		psClientCCB->pui32MappingTable = OSAllocMem(MAX(ui32NumChunks, ui32NumVirtChunks/2) * sizeof(IMG_UINT32));
+		if (psClientCCB->pui32MappingTable == NULL)
 		{
-			psClientCCB->pui32MappingTable = NULL;
+			eError = PVRSRV_ERROR_OUT_OF_MEMORY;
+			goto fail_alloc_mtable;
+		}
+		for (i = 0; i < ui32NumChunks; i++)
+		{
+			psClientCCB->pui32MappingTable[i] = i;
+		}
+
+		if (eHeapType == PHYS_HEAP_TYPE_LMA ||
+			eHeapType == PHYS_HEAP_TYPE_DMA)
+		{
 			/*
-			 * On LMA sparse memory can't be mapped to kernel without support for non physically
-			 * sparse allocations.
+			 * On LMA sparse memory can't be mapped to kernel.
 			 * To work around this whole ccb memory is allocated at once as contiguous.
 			 */
 			eError = DevmemFwAllocate(psDevInfo,
@@ -665,25 +679,9 @@ PVRSRV_ERROR RGXCreateCCB(PVRSRV_RGXDEV_INFO	*psDevInfo,
 		}
 		else
 		{
-			/*
-			 * Growing CCB is doubling the size. Last grow would require only ui32NumVirtChunks/2 new chunks
-			 * because another ui32NumVirtChunks/2 is already allocated.
-			 * Sometimes initial chunk count would be higher (when CCB size is equal to CCB maximum size) so MAX is needed.
-			 */
-			psClientCCB->pui32MappingTable = OSAllocMem(MAX(ui32NumChunks, ui32NumVirtChunks/2) * sizeof(IMG_UINT32));
-			if (psClientCCB->pui32MappingTable == NULL)
-			{
-				eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-				goto fail_alloc_mtable;
-			}
-
-			for (i = 0; i < ui32NumChunks; i++)
-			{
-				psClientCCB->pui32MappingTable[i] = i;
-			}
-
 			eError = DevmemFwAllocateSparse(psDevInfo,
 											ui32VirtualAllocSize,
+											ui32ChunkSize,
 											ui32NumChunks,
 											ui32NumVirtChunks,
 											psClientCCB->pui32MappingTable,
@@ -866,7 +864,7 @@ fail_map_ccb:
 	DevmemFwUnmapAndFree(psDevInfo, psClientCCB->psClientCCBMemDesc);
 #if defined(PVRSRV_ENABLE_CCCB_GROW)
 fail_alloc_ccb:
-	if (psClientCCB->pui32MappingTable)
+	if ( psClientCCB->ui32VirtualAllocSize > 0)
 	{
 		OSFreeMem(psClientCCB->pui32MappingTable);
 	}
@@ -1188,7 +1186,7 @@ PVRSRV_ERROR RGXAcquireCCB(RGX_CLIENT_CCB *psClientCCB,
 				{
 					/* Grow CCB */
 					PHYS_HEAP *psPhysHeap = psDevInfo->psDeviceNode->apsPhysHeap[PVRSRV_PHYS_HEAP_FW_MAIN];
-					PHYS_HEAP_POLICY uiHeapPolicy = PhysHeapGetPolicy(psPhysHeap);
+					PHYS_HEAP_TYPE eHeapType = PhysHeapGetType(psPhysHeap);
 					PVRSRV_ERROR eErr = PVRSRV_OK;
 
 					/* Something went wrong if we are here a second time */
@@ -1196,12 +1194,12 @@ PVRSRV_ERROR RGXAcquireCCB(RGX_CLIENT_CCB *psClientCCB,
 					OSLockAcquire(psClientCCB->hCCBGrowLock);
 
 					/*
-					 * On LMA sparse memory can't be mapped to kernel without support for non physically
-					 * sparse allocations.
+					 * On LMA sparse memory can't be mapped to kernel.
 					 * To work around this whole ccb memory was allocated at once as contiguous.
 					 * In such case below sparse change is not needed because memory is already allocated.
 					 */
-					if (uiHeapPolicy == PHYS_HEAP_POLICY_ALLOC_ALLOW_NONCONTIG)
+					if (eHeapType != PHYS_HEAP_TYPE_LMA &&
+						eHeapType != PHYS_HEAP_TYPE_DMA)
 					{
 						IMG_UINT32 ui32AllocChunkCount = psClientCCB->ui32Size / psClientCCB->ui32ChunkSize;
 
@@ -1402,7 +1400,7 @@ void RGXReleaseCCB(RGX_CLIENT_CCB *psClientCCB,
 
 			if (psCmdHeader->eCmdType == RGXFWIF_CCB_CMD_TYPE_UPDATE)
 			{
-				/* If an UPDATE then record the values in case an adjacent fence uses it. */
+				/* If an UPDATE then record the values incase an adjacent fence uses it. */
 				IMG_UINT32  ui32NumUFOs = psCmdHeader->ui32CmdSize / sizeof(RGXFWIF_UFO);
 				RGXFWIF_UFO *psUFOPtr   = IMG_OFFSET_ADDR(pvBufferStart, sizeof(RGXFWIF_CCB_CMD_HEADER));
 
@@ -1559,10 +1557,6 @@ void RGXReleaseCCB(RGX_CLIENT_CCB *psClientCCB,
 	psClientCCB->psClientCCBCtrl->ui32DepOffset = psClientCCB->ui32HostWriteOffset;
 #if defined(SUPPORT_AGP)
 	psClientCCB->psClientCCBCtrl->ui32ReadOffset2 = psClientCCB->ui32HostWriteOffset;
-#if defined(SUPPORT_AGP4)
-	psClientCCB->psClientCCBCtrl->ui32ReadOffset3 = psClientCCB->ui32HostWriteOffset;
-	psClientCCB->psClientCCBCtrl->ui32ReadOffset4 = psClientCCB->ui32HostWriteOffset;
-#endif
 #endif
 #endif
 
@@ -1581,8 +1575,8 @@ IMG_UINT32 RGXGetWrapMaskCCB(RGX_CLIENT_CCB *psClientCCB)
 	return psClientCCB->ui32Size-1;
 }
 
-void RGXSetCCBFlags(RGX_CLIENT_CCB *psClientCCB,
-					IMG_UINT32		ui32Flags)
+PVRSRV_ERROR RGXSetCCBFlags(RGX_CLIENT_CCB *psClientCCB,
+							IMG_UINT32		ui32Flags)
 {
 	if ((ui32Flags & RGX_CONTEXT_FLAG_DISABLESLR))
 	{
@@ -1592,6 +1586,7 @@ void RGXSetCCBFlags(RGX_CLIENT_CCB *psClientCCB,
 	{
 		BIT_UNSET(psClientCCB->ui32CCBFlags, CCB_FLAGS_SLR_DISABLED);
 	}
+	return PVRSRV_OK;
 }
 
 void RGXCmdHelperInitCmdCCB_CommandSize(PVRSRV_RGXDEV_INFO *psDevInfo,
@@ -1665,13 +1660,13 @@ void RGXCmdHelperInitCmdCCB_CommandSize(PVRSRV_RGXDEV_INFO *psDevInfo,
 	if (ppPreAddr && (ppPreAddr->ui32Addr != 0))
 	{
 		psCmdHelperData->ui32PreTimeStampCmdSize = sizeof(RGXFWIF_CCB_CMD_HEADER)
-			+ PVR_ALIGN(sizeof(RGXFWIF_DEV_VIRTADDR), RGXFWIF_FWALLOC_ALIGN);
+			+ ((sizeof(RGXFWIF_DEV_VIRTADDR) + RGXFWIF_FWALLOC_ALIGN - 1) & ~(RGXFWIF_FWALLOC_ALIGN - 1));
 	}
 
 	if (ppPostAddr && (ppPostAddr->ui32Addr != 0))
 	{
 		psCmdHelperData->ui32PostTimeStampCmdSize = sizeof(RGXFWIF_CCB_CMD_HEADER)
-			+ PVR_ALIGN(sizeof(RGXFWIF_DEV_VIRTADDR), RGXFWIF_FWALLOC_ALIGN);
+			+ ((sizeof(RGXFWIF_DEV_VIRTADDR) + RGXFWIF_FWALLOC_ALIGN - 1) & ~(RGXFWIF_FWALLOC_ALIGN - 1));
 	}
 
 	if (ppRMWUFOAddr && (ppRMWUFOAddr->ui32Addr != 0))
@@ -1761,11 +1756,8 @@ void RGXCmdHelperInitCmdCCB_OtherData(RGX_CLIENT_CCB            *psClientCCB,
 			FWCommonContextGetFWAddress(psClientCCB->psServerCommonContext).ui32Addr);
 
 #if defined(SUPPORT_WORKLOAD_ESTIMATION)
-	if (!PVRSRV_VZ_MODE_IS(GUEST))
-	{
-		/* Workload Data added */
-		psCmdHelperData->psWorkEstKickData = psWorkEstKickData;
-	}
+	/* Workload Data added */
+	psCmdHelperData->psWorkEstKickData = psWorkEstKickData;
 #endif
 }
 
@@ -1926,12 +1918,9 @@ PVRSRV_ERROR RGXCmdHelperAcquireCmdCCB(IMG_UINT32 ui32CmdCount,
 			psHeader->ui32ExtJobRef = psCmdHelperData->ui32ExtJobRef;
 			psHeader->ui32IntJobRef = psCmdHelperData->ui32IntJobRef;
 #if defined(SUPPORT_WORKLOAD_ESTIMATION)
-			if (!PVRSRV_VZ_MODE_IS(GUEST))
-			{
-				psHeader->sWorkEstKickData.ui16ReturnDataIndex = 0;
-				psHeader->sWorkEstKickData.ui64Deadline = 0;
-				psHeader->sWorkEstKickData.ui32CyclesPrediction = 0;
-			}
+			psHeader->sWorkEstKickData.ui16ReturnDataIndex = 0;
+			psHeader->sWorkEstKickData.ui64Deadline = 0;
+			psHeader->sWorkEstKickData.ui32CyclesPrediction = 0;
 #endif
 
 			pvCmdPtr = IMG_OFFSET_ADDR(pvCmdPtr, sizeof(RGXFWIF_CCB_CMD_HEADER));
@@ -1987,12 +1976,9 @@ PVRSRV_ERROR RGXCmdHelperAcquireCmdCCB(IMG_UINT32 ui32CmdCount,
 			psHeader->ui32ExtJobRef = psCmdHelperData->ui32ExtJobRef;
 			psHeader->ui32IntJobRef = psCmdHelperData->ui32IntJobRef;
 #if defined(SUPPORT_WORKLOAD_ESTIMATION)
-			if (!PVRSRV_VZ_MODE_IS(GUEST))
-			{
-				psHeader->sWorkEstKickData.ui16ReturnDataIndex = 0;
-				psHeader->sWorkEstKickData.ui64Deadline = 0;
-				psHeader->sWorkEstKickData.ui32CyclesPrediction = 0;
-			}
+			psHeader->sWorkEstKickData.ui16ReturnDataIndex = 0;
+			psHeader->sWorkEstKickData.ui64Deadline = 0;
+			psHeader->sWorkEstKickData.ui32CyclesPrediction = 0;
 #endif
 			pui64FBSCInvalCmdData = IMG_OFFSET_ADDR(psHeader, sizeof(RGXFWIF_CCB_CMD_HEADER));
 			*pui64FBSCInvalCmdData = psCmdHelperData->ui64FBSCEntryMask;
@@ -2028,19 +2014,20 @@ PVRSRV_ERROR RGXCmdHelperAcquireCmdCCB(IMG_UINT32 ui32CmdCount,
 			psHeader->ui32IntJobRef = psCmdHelperData->ui32IntJobRef;
 
 #if defined(SUPPORT_WORKLOAD_ESTIMATION)
-			if (!PVRSRV_VZ_MODE_IS(GUEST))
+			if (psCmdHelperData->psWorkEstKickData != NULL &&
+				psCmdHelperData->eType != RGXFWIF_CCB_CMD_TYPE_NULL)
 			{
-				if (psCmdHelperData->psWorkEstKickData != NULL &&
-					RGXIsValidWorkloadEstCCBCommand(psCmdHelperData->eType))
-				{
-					psHeader->sWorkEstKickData = *psCmdHelperData->psWorkEstKickData;
-				}
-				else
-				{
-					psHeader->sWorkEstKickData.ui16ReturnDataIndex = 0;
-					psHeader->sWorkEstKickData.ui64Deadline = 0;
-					psHeader->sWorkEstKickData.ui32CyclesPrediction = 0;
-				}
+				PVR_ASSERT(psCmdHelperData->eType == RGXFWIF_CCB_CMD_TYPE_GEOM ||
+				           psCmdHelperData->eType == RGXFWIF_CCB_CMD_TYPE_3D ||
+				           psCmdHelperData->eType == RGXFWIF_CCB_CMD_TYPE_CDM ||
+				           psCmdHelperData->eType == RGXFWIF_CCB_CMD_TYPE_TQ_TDM);
+				psHeader->sWorkEstKickData = *psCmdHelperData->psWorkEstKickData;
+			}
+			else
+			{
+				psHeader->sWorkEstKickData.ui16ReturnDataIndex = 0;
+				psHeader->sWorkEstKickData.ui64Deadline = 0;
+				psHeader->sWorkEstKickData.ui32CyclesPrediction = 0;
 			}
 #endif
 
@@ -2071,12 +2058,9 @@ PVRSRV_ERROR RGXCmdHelperAcquireCmdCCB(IMG_UINT32 ui32CmdCount,
 			psHeader->ui32ExtJobRef = psCmdHelperData->ui32ExtJobRef;
 			psHeader->ui32IntJobRef = psCmdHelperData->ui32IntJobRef;
 #if defined(SUPPORT_WORKLOAD_ESTIMATION)
-			if (!PVRSRV_VZ_MODE_IS(GUEST))
-			{
-				psHeader->sWorkEstKickData.ui16ReturnDataIndex = 0;
-				psHeader->sWorkEstKickData.ui64Deadline = 0;
-				psHeader->sWorkEstKickData.ui32CyclesPrediction = 0;
-			}
+			psHeader->sWorkEstKickData.ui16ReturnDataIndex = 0;
+			psHeader->sWorkEstKickData.ui64Deadline = 0;
+			psHeader->sWorkEstKickData.ui32CyclesPrediction = 0;
 #endif
 			pvCmdPtr = IMG_OFFSET_ADDR(pvCmdPtr, sizeof(RGXFWIF_CCB_CMD_HEADER));
 
@@ -2100,12 +2084,9 @@ PVRSRV_ERROR RGXCmdHelperAcquireCmdCCB(IMG_UINT32 ui32CmdCount,
 			psHeader->ui32ExtJobRef = psCmdHelperData->ui32ExtJobRef;
 			psHeader->ui32IntJobRef = psCmdHelperData->ui32IntJobRef;
 #if defined(SUPPORT_WORKLOAD_ESTIMATION)
-			if (!PVRSRV_VZ_MODE_IS(GUEST))
-			{
-				psHeader->sWorkEstKickData.ui16ReturnDataIndex = 0;
-				psHeader->sWorkEstKickData.ui64Deadline = 0;
-				psHeader->sWorkEstKickData.ui32CyclesPrediction = 0;
-			}
+			psHeader->sWorkEstKickData.ui16ReturnDataIndex = 0;
+			psHeader->sWorkEstKickData.ui64Deadline = 0;
+			psHeader->sWorkEstKickData.ui32CyclesPrediction = 0;
 #endif
 			pvCmdPtr = IMG_OFFSET_ADDR(pvCmdPtr, sizeof(RGXFWIF_CCB_CMD_HEADER));
 
@@ -2193,20 +2174,19 @@ void RGXCmdHelperReleaseCmdCCB(IMG_UINT32 ui32CmdCount,
 	for (i=0;i<ui32CmdCount;i++)
 	{
 		RGX_CCB_CMD_HELPER_DATA *psCmdHelperData = &asCmdHelperData[i];
-#if defined(PDUMP) || defined(__linux__)
+#if defined(PDUMP)
 		PVRSRV_RGXDEV_INFO *psDevInfo = FWCommonContextGetRGXDevInfo(psCmdHelperData->psClientCCB->psServerCommonContext);
 #endif
 
-#if (!defined(__linux__) || !defined(PDUMP))
+#if (!defined(__linux__) || !defined(SUPPORT_RGX)) && !defined(PDUMP)
 		PVR_UNREFERENCED_PARAMETER(psCmdHelperData);
 #endif
 
-#if defined(__linux__)
+#if defined(__linux__) && defined(SUPPORT_RGX)
 		if (bTraceChecks)
 		{
 			trace_rogue_fence_checks(psCmdHelperData->pszCommandName,
 									 pcszDMName,
-									 psDevInfo->psDeviceNode->sDevId.ui32InternalID,
 									 ui32CtxAddr,
 									 psCmdHelperData->psClientCCB->ui32HostWriteOffset + ui32AllocSize,
 									 psCmdHelperData->ui32ClientFenceCount,
@@ -2217,7 +2197,6 @@ void RGXCmdHelperReleaseCmdCCB(IMG_UINT32 ui32CmdCount,
 		{
 			trace_rogue_fence_updates(psCmdHelperData->pszCommandName,
 									  pcszDMName,
-									  psDevInfo->psDeviceNode->sDevId.ui32InternalID,
 									  ui32CtxAddr,
 									  psCmdHelperData->psClientCCB->ui32HostWriteOffset + ui32AllocSize,
 									  psCmdHelperData->ui32ClientUpdateCount,
@@ -2603,16 +2582,19 @@ void DumpCCB(PVRSRV_RGXDEV_INFO *psDevInfo,
 #endif
 }
 
-void DumpFirstCCBCmd(PRGXFWIF_FWCOMMONCONTEXT sFWCommonContext,
+void DumpStalledCCBCommand(PRGXFWIF_FWCOMMONCONTEXT sFWCommonContext,
 				RGX_CLIENT_CCB *psCurrentClientCCB,
 				DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 				void *pvDumpDebugFile)
 {
 	volatile RGXFWIF_CCCB_CTL	*psClientCCBCtrl = psCurrentClientCCB->psClientCCBCtrl;
 	void					*pvClientCCBBuff = psCurrentClientCCB->pvClientCCB;
+	volatile void			*pvPtr;
 	IMG_UINT32					ui32SampledRdOff = psClientCCBCtrl->ui32ReadOffset;
 	IMG_UINT32					ui32SampledDepOff = psClientCCBCtrl->ui32DepOffset;
 	IMG_UINT32					ui32SampledWrOff = psCurrentClientCCB->ui32HostWriteOffset;
+
+	pvPtr = IMG_OFFSET_ADDR(pvClientCCBBuff, ui32SampledRdOff);
 
 	if ((ui32SampledRdOff == ui32SampledDepOff) &&
 		(ui32SampledRdOff != ui32SampledWrOff))

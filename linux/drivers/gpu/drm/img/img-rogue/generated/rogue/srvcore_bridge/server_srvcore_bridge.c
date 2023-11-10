@@ -457,7 +457,9 @@ PVRSRVBridgeAlignmentCheck(IMG_UINT32 ui32DispatchTableEntry,
 
 	IMG_UINT32 ui32NextOffset = 0;
 	IMG_BYTE *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
 	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
 
 	IMG_UINT32 ui32BufferSize = 0;
 	IMG_UINT64 ui64BufferSize =
@@ -479,6 +481,7 @@ PVRSRVBridgeAlignmentCheck(IMG_UINT32 ui32DispatchTableEntry,
 
 	if (ui32BufferSize != 0)
 	{
+#if !defined(INTEGRITY_OS)
 		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
 		IMG_UINT32 ui32InBufferOffset =
 		    PVR_ALIGN(sizeof(*psAlignmentCheckIN), sizeof(unsigned long));
@@ -494,6 +497,7 @@ PVRSRVBridgeAlignmentCheck(IMG_UINT32 ui32DispatchTableEntry,
 			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];
 		}
 		else
+#endif
 		{
 			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
 
@@ -538,7 +542,11 @@ AlignmentCheck_exit:
 		PVR_ASSERT(ui32BufferSize == ui32NextOffset);
 #endif /* PVRSRV_NEED_PVR_ASSERT */
 
+#if defined(INTEGRITY_OS)
+	if (pArrayArgsBuffer)
+#else
 	if (!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
 		OSFreeMemNoStats(pArrayArgsBuffer);
 
 	return 0;
@@ -563,8 +571,6 @@ PVRSRVBridgeGetDeviceStatus(IMG_UINT32 ui32DispatchTableEntry,
 	return 0;
 }
 
-static_assert(8 <= IMG_UINT32_MAX, "8 must not be larger than IMG_UINT32_MAX");
-
 static IMG_INT
 PVRSRVBridgeGetMultiCoreInfo(IMG_UINT32 ui32DispatchTableEntry,
 			     IMG_UINT8 * psGetMultiCoreInfoIN_UI8,
@@ -579,7 +585,9 @@ PVRSRVBridgeGetMultiCoreInfo(IMG_UINT32 ui32DispatchTableEntry,
 
 	IMG_UINT32 ui32NextOffset = 0;
 	IMG_BYTE *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
 	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
 
 	IMG_UINT32 ui32BufferSize = 0;
 	IMG_UINT64 ui64BufferSize =
@@ -603,6 +611,7 @@ PVRSRVBridgeGetMultiCoreInfo(IMG_UINT32 ui32DispatchTableEntry,
 
 	if (ui32BufferSize != 0)
 	{
+#if !defined(INTEGRITY_OS)
 		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
 		IMG_UINT32 ui32InBufferOffset =
 		    PVR_ALIGN(sizeof(*psGetMultiCoreInfoIN), sizeof(unsigned long));
@@ -618,6 +627,7 @@ PVRSRVBridgeGetMultiCoreInfo(IMG_UINT32 ui32DispatchTableEntry,
 			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];
 		}
 		else
+#endif
 		{
 			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
 
@@ -667,7 +677,11 @@ GetMultiCoreInfo_exit:
 		PVR_ASSERT(ui32BufferSize == ui32NextOffset);
 #endif /* PVRSRV_NEED_PVR_ASSERT */
 
+#if defined(INTEGRITY_OS)
+	if (pArrayArgsBuffer)
+#else
 	if (!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
 		OSFreeMemNoStats(pArrayArgsBuffer);
 
 	return 0;
@@ -726,9 +740,6 @@ EventObjectWaitTimeout_exit:
 	return 0;
 }
 
-static_assert(PVRSRV_PROCESS_STAT_TYPE_COUNT <= IMG_UINT32_MAX,
-	      "PVRSRV_PROCESS_STAT_TYPE_COUNT must not be larger than IMG_UINT32_MAX");
-
 static IMG_INT
 PVRSRVBridgeFindProcessMemStats(IMG_UINT32 ui32DispatchTableEntry,
 				IMG_UINT8 * psFindProcessMemStatsIN_UI8,
@@ -742,15 +753,17 @@ PVRSRVBridgeFindProcessMemStats(IMG_UINT32 ui32DispatchTableEntry,
 	    (PVRSRV_BRIDGE_OUT_FINDPROCESSMEMSTATS *) IMG_OFFSET_ADDR(psFindProcessMemStatsOUT_UI8,
 								      0);
 
-	IMG_UINT64 *pui64MemStatsArrayInt = NULL;
+	IMG_UINT32 *pui32MemStatsArrayInt = NULL;
 
 	IMG_UINT32 ui32NextOffset = 0;
 	IMG_BYTE *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
 	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
 
 	IMG_UINT32 ui32BufferSize = 0;
 	IMG_UINT64 ui64BufferSize =
-	    ((IMG_UINT64) psFindProcessMemStatsIN->ui32ArrSize * sizeof(IMG_UINT64)) + 0;
+	    ((IMG_UINT64) psFindProcessMemStatsIN->ui32ArrSize * sizeof(IMG_UINT32)) + 0;
 
 	if (psFindProcessMemStatsIN->ui32ArrSize > PVRSRV_PROCESS_STAT_TYPE_COUNT)
 	{
@@ -760,7 +773,7 @@ PVRSRVBridgeFindProcessMemStats(IMG_UINT32 ui32DispatchTableEntry,
 
 	PVR_UNREFERENCED_PARAMETER(psConnection);
 
-	psFindProcessMemStatsOUT->pui64MemStatsArray = psFindProcessMemStatsIN->pui64MemStatsArray;
+	psFindProcessMemStatsOUT->pui32MemStatsArray = psFindProcessMemStatsIN->pui32MemStatsArray;
 
 	if (ui64BufferSize > IMG_UINT32_MAX)
 	{
@@ -772,6 +785,7 @@ PVRSRVBridgeFindProcessMemStats(IMG_UINT32 ui32DispatchTableEntry,
 
 	if (ui32BufferSize != 0)
 	{
+#if !defined(INTEGRITY_OS)
 		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
 		IMG_UINT32 ui32InBufferOffset =
 		    PVR_ALIGN(sizeof(*psFindProcessMemStatsIN), sizeof(unsigned long));
@@ -787,6 +801,7 @@ PVRSRVBridgeFindProcessMemStats(IMG_UINT32 ui32DispatchTableEntry,
 			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];
 		}
 		else
+#endif
 		{
 			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
 
@@ -800,16 +815,16 @@ PVRSRVBridgeFindProcessMemStats(IMG_UINT32 ui32DispatchTableEntry,
 
 	if (psFindProcessMemStatsIN->ui32ArrSize != 0)
 	{
-		pui64MemStatsArrayInt =
-		    (IMG_UINT64 *) IMG_OFFSET_ADDR(pArrayArgsBuffer, ui32NextOffset);
-		ui32NextOffset += psFindProcessMemStatsIN->ui32ArrSize * sizeof(IMG_UINT64);
+		pui32MemStatsArrayInt =
+		    (IMG_UINT32 *) IMG_OFFSET_ADDR(pArrayArgsBuffer, ui32NextOffset);
+		ui32NextOffset += psFindProcessMemStatsIN->ui32ArrSize * sizeof(IMG_UINT32);
 	}
 
 	psFindProcessMemStatsOUT->eError =
 	    PVRSRVFindProcessMemStatsKM(psFindProcessMemStatsIN->ui32PID,
 					psFindProcessMemStatsIN->ui32ArrSize,
 					psFindProcessMemStatsIN->bbAllProcessStats,
-					pui64MemStatsArrayInt);
+					pui32MemStatsArrayInt);
 	/* Exit early if bridged call fails */
 	if (unlikely(psFindProcessMemStatsOUT->eError != PVRSRV_OK))
 	{
@@ -817,14 +832,14 @@ PVRSRVBridgeFindProcessMemStats(IMG_UINT32 ui32DispatchTableEntry,
 	}
 
 	/* If dest ptr is non-null and we have data to copy */
-	if ((pui64MemStatsArrayInt) &&
-	    ((psFindProcessMemStatsIN->ui32ArrSize * sizeof(IMG_UINT64)) > 0))
+	if ((pui32MemStatsArrayInt) &&
+	    ((psFindProcessMemStatsIN->ui32ArrSize * sizeof(IMG_UINT32)) > 0))
 	{
 		if (unlikely
 		    (OSCopyToUser
-		     (NULL, (void __user *)psFindProcessMemStatsOUT->pui64MemStatsArray,
-		      pui64MemStatsArrayInt,
-		      (psFindProcessMemStatsIN->ui32ArrSize * sizeof(IMG_UINT64))) != PVRSRV_OK))
+		     (NULL, (void __user *)psFindProcessMemStatsOUT->pui32MemStatsArray,
+		      pui32MemStatsArrayInt,
+		      (psFindProcessMemStatsIN->ui32ArrSize * sizeof(IMG_UINT32))) != PVRSRV_OK))
 		{
 			psFindProcessMemStatsOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
 
@@ -840,7 +855,11 @@ FindProcessMemStats_exit:
 		PVR_ASSERT(ui32BufferSize == ui32NextOffset);
 #endif /* PVRSRV_NEED_PVR_ASSERT */
 
+#if defined(INTEGRITY_OS)
+	if (pArrayArgsBuffer)
+#else
 	if (!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
 		OSFreeMemNoStats(pArrayArgsBuffer);
 
 	return 0;

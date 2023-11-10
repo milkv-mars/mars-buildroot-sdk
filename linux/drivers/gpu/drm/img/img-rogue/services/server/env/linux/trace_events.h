@@ -54,9 +54,13 @@ bool trace_rogue_are_fence_checks_traced(void);
 
 bool trace_rogue_are_fence_updates_traced(void);
 
+void trace_job_enqueue(IMG_UINT32 ui32FWContext,
+                       IMG_UINT32 ui32ExtJobRef,
+                       IMG_UINT32 ui32IntJobRef,
+                       const char *pszKickType);
+
 #if defined(SUPPORT_RGX)
 void trace_rogue_fence_updates(const char *cmd, const char *dm,
-							   IMG_UINT32 ui32GpuId,
 							   IMG_UINT32 ui32FWContext,
 							   IMG_UINT32 ui32Offset,
 							   IMG_UINT uCount,
@@ -64,7 +68,6 @@ void trace_rogue_fence_updates(const char *cmd, const char *dm,
 							   IMG_UINT32 *paui32Values);
 
 void trace_rogue_fence_checks(const char *cmd, const char *dm,
-							  IMG_UINT32 ui32GpuId,
 							  IMG_UINT32 ui32FWContext,
 							  IMG_UINT32 ui32Offset,
 							  IMG_UINT uCount,
@@ -72,7 +75,6 @@ void trace_rogue_fence_checks(const char *cmd, const char *dm,
 							  IMG_UINT32 *paui32Values);
 
 void trace_rogue_ufo_updates(IMG_UINT64 ui64OSTimestamp,
-							 IMG_UINT32 ui32GpuId,
 							 IMG_UINT32 ui32FWCtx,
 							 IMG_UINT32 ui32ExtJobRef,
 							 IMG_UINT32 ui32IntJobRef,
@@ -80,7 +82,6 @@ void trace_rogue_ufo_updates(IMG_UINT64 ui64OSTimestamp,
 							 const RGX_HWPERF_UFO_DATA_ELEMENT *puData);
 
 void trace_rogue_ufo_checks_success(IMG_UINT64 ui64OSTimestamp,
-									IMG_UINT32 ui32GpuId,
 									IMG_UINT32 ui32FWCtx,
 									IMG_UINT32 ui32ExtJobRef,
 									IMG_UINT32 ui32IntJobRef,
@@ -89,7 +90,6 @@ void trace_rogue_ufo_checks_success(IMG_UINT64 ui64OSTimestamp,
 									const RGX_HWPERF_UFO_DATA_ELEMENT *puData);
 
 void trace_rogue_ufo_checks_fail(IMG_UINT64 ui64OSTimestamp,
-								 IMG_UINT32 ui32GpuId,
 								 IMG_UINT32 ui32FWCtx,
 								 IMG_UINT32 ui32ExtJobRef,
 								 IMG_UINT32 ui32IntJobRef,
@@ -118,10 +118,17 @@ bool trace_rogue_are_fence_updates_traced(void)
 	return false;
 }
 
+static inline
+void trace_job_enqueue(IMG_UINT32 ui32FWContext,
+                       IMG_UINT32 ui32ExtJobRef,
+                       IMG_UINT32 ui32IntJobRef,
+                       const char *pszKickType)
+{
+}
+
 #if defined(SUPPORT_RGX)
 static inline
 void trace_rogue_fence_updates(const char *cmd, const char *dm,
-							   IMG_UINT32 ui32GpuId,
 							   IMG_UINT32 ui32FWContext,
 							   IMG_UINT32 ui32Offset,
 							   IMG_UINT uCount,
@@ -132,7 +139,6 @@ void trace_rogue_fence_updates(const char *cmd, const char *dm,
 
 static inline
 void trace_rogue_fence_checks(const char *cmd, const char *dm,
-							  IMG_UINT32 ui32GpuId,
 							  IMG_UINT32 ui32FWContext,
 							  IMG_UINT32 ui32Offset,
 							  IMG_UINT uCount,
@@ -143,7 +149,6 @@ void trace_rogue_fence_checks(const char *cmd, const char *dm,
 
 static inline
 void trace_rogue_ufo_updates(IMG_UINT64 ui64OSTimestamp,
-							 IMG_UINT32 ui32GpuId,
 							 IMG_UINT32 ui32FWCtx,
 							 IMG_UINT32 ui32ExtJobRef,
 							 IMG_UINT32 ui32IntJobRef,
@@ -154,7 +159,6 @@ void trace_rogue_ufo_updates(IMG_UINT64 ui64OSTimestamp,
 
 static inline
 void trace_rogue_ufo_checks_success(IMG_UINT64 ui64OSTimestamp,
-									IMG_UINT32 ui32GpuId,
 									IMG_UINT32 ui32FWCtx,
 									IMG_UINT32 ui32ExtJobRef,
 									IMG_UINT32 ui32IntJobRef,
@@ -166,7 +170,6 @@ void trace_rogue_ufo_checks_success(IMG_UINT64 ui64OSTimestamp,
 
 static inline
 void trace_rogue_ufo_checks_fail(IMG_UINT64 ui64OSTimestamp,
-								 IMG_UINT32 ui32GpuId,
 								 IMG_UINT32 ui32FWCtx,
 								 IMG_UINT32 ui32ExtJobRef,
 								 IMG_UINT32 ui32IntJobRef,

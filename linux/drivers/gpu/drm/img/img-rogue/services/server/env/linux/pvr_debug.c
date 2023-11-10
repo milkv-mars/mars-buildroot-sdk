@@ -159,7 +159,7 @@ void PVRSRVDebugPrintfDumpCCB(void)
 
 #endif /* defined(PVRSRV_DEBUG_CCB_MAX) */
 
-static IMG_UINT32 PVRDebugLevel =
+static IMG_UINT32 gPVRDebugLevel =
 	(
 	 DBGPRIV_FATAL | DBGPRIV_ERROR | DBGPRIV_WARNING
 #if defined(PVRSRV_DEBUG_CCB_MAX)
@@ -170,23 +170,23 @@ static IMG_UINT32 PVRDebugLevel =
 #endif /* defined(PVR_DPF_ADHOC_DEBUG_ON) */
 	);
 
-module_param(PVRDebugLevel, uint, 0644);
-MODULE_PARM_DESC(PVRDebugLevel,
+module_param(gPVRDebugLevel, uint, 0644);
+MODULE_PARM_DESC(gPVRDebugLevel,
                  "Sets the level of debug output (default 0x7)");
 
 IMG_UINT32 OSDebugLevel(void)
 {
-	return PVRDebugLevel;
+	return gPVRDebugLevel;
 }
 
 void OSSetDebugLevel(IMG_UINT32 ui32DebugLevel)
 {
-	PVRDebugLevel = ui32DebugLevel;
+	gPVRDebugLevel = ui32DebugLevel;
 }
 
 IMG_BOOL OSIsDebugLevel(IMG_UINT32 ui32DebugLevel)
 {
-	return (PVRDebugLevel & ui32DebugLevel) != 0;
+	return (gPVRDebugLevel & ui32DebugLevel) != 0;
 }
 
 #else /* defined(PVRSRV_NEED_PVR_DPF) */
@@ -359,7 +359,7 @@ void PVRSRVDebugPrintf(IMG_UINT32 ui32DebugLevel,
 	IMG_CHAR *pszBuf = gszBuffer;
 	IMG_UINT32 ui32BufSiz = sizeof(gszBuffer);
 
-	if (!(PVRDebugLevel & ui32DebugLevel))
+	if (!(gPVRDebugLevel & ui32DebugLevel))
 	{
 		return;
 	}

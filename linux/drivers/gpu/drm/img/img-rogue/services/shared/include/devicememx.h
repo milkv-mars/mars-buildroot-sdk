@@ -202,7 +202,7 @@ DevmemXPhysDescInit(DEVMEMX_PHYSDESC *psPhysDesc,
                     IMG_UINT32 uiNumPages,
                     IMG_UINT32 uiLog2PageSize,
                     PVRSRV_MEMALLOCFLAGS_T uiFlags,
-                    SHARED_DEV_CONNECTION hConnection);
+                    IMG_HANDLE hBridge);
 
 void
 DevmemXPhysDescFree(DEVMEMX_PHYSDESC *psPhysDesc);

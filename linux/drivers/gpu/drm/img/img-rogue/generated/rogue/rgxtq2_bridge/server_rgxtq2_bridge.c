@@ -97,7 +97,9 @@ PVRSRVBridgeRGXTDMCreateTransferContext(IMG_UINT32 ui32DispatchTableEntry,
 
 	IMG_UINT32 ui32NextOffset = 0;
 	IMG_BYTE *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
 	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
 
 	IMG_UINT32 ui32BufferSize = 0;
 	IMG_UINT64 ui64BufferSize =
@@ -134,6 +136,7 @@ PVRSRVBridgeRGXTDMCreateTransferContext(IMG_UINT32 ui32DispatchTableEntry,
 
 	if (ui32BufferSize != 0)
 	{
+#if !defined(INTEGRITY_OS)
 		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
 		IMG_UINT32 ui32InBufferOffset =
 		    PVR_ALIGN(sizeof(*psRGXTDMCreateTransferContextIN), sizeof(unsigned long));
@@ -150,6 +153,7 @@ PVRSRVBridgeRGXTDMCreateTransferContext(IMG_UINT32 ui32DispatchTableEntry,
 			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];
 		}
 		else
+#endif
 		{
 			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
 
@@ -202,7 +206,7 @@ PVRSRVBridgeRGXTDMCreateTransferContext(IMG_UINT32 ui32DispatchTableEntry,
 
 	psRGXTDMCreateTransferContextOUT->eError =
 	    PVRSRVRGXTDMCreateTransferContextKM(psConnection, OSGetDevNode(psConnection),
-						psRGXTDMCreateTransferContextIN->i32Priority,
+						psRGXTDMCreateTransferContextIN->ui32Priority,
 						psRGXTDMCreateTransferContextIN->
 						ui32FrameworkCmdSize, ui8FrameworkCmdInt,
 						hPrivDataInt,
@@ -265,7 +269,11 @@ RGXTDMCreateTransferContext_exit:
 		PVR_ASSERT(ui32BufferSize == ui32NextOffset);
 #endif /* PVRSRV_NEED_PVR_ASSERT */
 
+#if defined(INTEGRITY_OS)
+	if (pArrayArgsBuffer)
+#else
 	if (!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
 		OSFreeMemNoStats(pArrayArgsBuffer);
 
 	return 0;
@@ -378,7 +386,7 @@ PVRSRVBridgeRGXTDMSetTransferContextPriority(IMG_UINT32 ui32DispatchTableEntry,
 	    PVRSRVRGXTDMSetTransferContextPriorityKM(psConnection, OSGetDevNode(psConnection),
 						     psTransferContextInt,
 						     psRGXTDMSetTransferContextPriorityIN->
-						     i32Priority);
+						     ui32Priority);
 
 RGXTDMSetTransferContextPriority_exit:
 
@@ -504,7 +512,9 @@ PVRSRVBridgeRGXTDMSubmitTransfer2(IMG_UINT32 ui32DispatchTableEntry,
 
 	IMG_UINT32 ui32NextOffset = 0;
 	IMG_BYTE *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
 	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
 
 	IMG_UINT32 ui32BufferSize = 0;
 	IMG_UINT64 ui64BufferSize =
@@ -562,6 +572,7 @@ PVRSRVBridgeRGXTDMSubmitTransfer2(IMG_UINT32 ui32DispatchTableEntry,
 
 	if (ui32BufferSize != 0)
 	{
+#if !defined(INTEGRITY_OS)
 		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
 		IMG_UINT32 ui32InBufferOffset =
 		    PVR_ALIGN(sizeof(*psRGXTDMSubmitTransfer2IN), sizeof(unsigned long));
@@ -577,6 +588,7 @@ PVRSRVBridgeRGXTDMSubmitTransfer2(IMG_UINT32 ui32DispatchTableEntry,
 			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];
 		}
 		else
+#endif
 		{
 			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
 
@@ -845,7 +857,7 @@ RGXTDMSubmitTransfer2_exit:
 		{
 
 			/* Unreference the previously looked up handle */
-			if (psUpdateUFOSyncPrimBlockInt && psUpdateUFOSyncPrimBlockInt[i])
+			if (psUpdateUFOSyncPrimBlockInt[i])
 			{
 				PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
 							    hUpdateUFOSyncPrimBlockInt2[i],
@@ -862,7 +874,7 @@ RGXTDMSubmitTransfer2_exit:
 		{
 
 			/* Unreference the previously looked up handle */
-			if (psSyncPMRsInt && psSyncPMRsInt[i])
+			if (psSyncPMRsInt[i])
 			{
 				PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
 							    hSyncPMRsInt2[i],
@@ -879,7 +891,11 @@ RGXTDMSubmitTransfer2_exit:
 		PVR_ASSERT(ui32BufferSize == ui32NextOffset);
 #endif /* PVRSRV_NEED_PVR_ASSERT */
 
+#if defined(INTEGRITY_OS)
+	if (pArrayArgsBuffer)
+#else
 	if (!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
 		OSFreeMemNoStats(pArrayArgsBuffer);
 
 	return 0;

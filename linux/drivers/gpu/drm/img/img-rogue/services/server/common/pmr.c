@@ -235,6 +235,11 @@ struct _PMR_
 	 */
 	IMG_BOOL bSparseAlloc;
 
+	/* Indicates whether this PMR has been unpinned.
+	 * By default, all PMRs are pinned at creation.
+	 */
+	IMG_BOOL bIsUnpinned;
+
 	/*
 	 * Flag that conveys mutability of the PMR:
 	 * - TRUE indicates the PMR is immutable (no more memory changes)
@@ -328,13 +333,14 @@ PDumpPMRFreePMR(PMR *psPMR,
 static void
 PDumpPMRMallocPMR(PMR *psPMR,
                   IMG_DEVMEM_SIZE_T uiSize,
+                  IMG_DEVMEM_ALIGN_T uiBlockSize,
                   IMG_UINT32 ui32ChunkSize,
                   IMG_UINT32 ui32NumPhysChunks,
                   IMG_UINT32 ui32NumVirtChunks,
                   IMG_UINT32 *puiMappingTable,
                   IMG_UINT32 uiLog2Contiguity,
                   IMG_BOOL bInitialise,
-                  IMG_UINT8 ui8InitValue,
+                  IMG_UINT32 ui32InitValue,
                   IMG_HANDLE *phPDumpAllocInfoOut,
                   IMG_UINT32 ui32PDumpFlags);
 
@@ -346,7 +352,7 @@ PDumpPMRChangeSparsePMR(PMR *psPMR,
                         IMG_UINT32 ui32FreePageCount,
                         IMG_UINT32 *pai32FreeIndices,
                         IMG_BOOL bInitialise,
-                        IMG_UINT8 ui8InitValue,
+                        IMG_UINT32 ui32InitValue,
                         IMG_HANDLE *phPDumpAllocInfoOut);
 #endif /* defined PDUMP */
 
@@ -373,6 +379,7 @@ PPVRSRV_DEVICE_NODE PMRGetExportDeviceNode(PMR_EXPORT *psExportPMR)
 
 static PVRSRV_ERROR
 _PMRCreate(PMR_SIZE_T uiLogicalSize,
+           PMR_SIZE_T uiChunkSize,
            IMG_UINT32 ui32NumPhysChunks,
            IMG_UINT32 ui32NumVirtChunks,
            IMG_UINT32 *pui32MappingTable,
@@ -385,9 +392,9 @@ _PMRCreate(PMR_SIZE_T uiLogicalSize,
 	PMR_MAPPING_TABLE *psMappingTable;
 	struct _PMR_CTX_ *psContext;
 	IMG_UINT32 i, ui32Temp = 0;
+	IMG_UINT32 ui32Remainder;
 	PVRSRV_ERROR eError;
 	IMG_BOOL bSparse = IMG_FALSE;
-	PMR_SIZE_T uiChunkSize;
 
 	psContext = &_gsSingletonPMRContext;
 
@@ -396,15 +403,10 @@ _PMRCreate(PMR_SIZE_T uiLogicalSize,
 			(ui32NumVirtChunks > 1) )
 	{
 		bSparse = IMG_TRUE;
-		uiChunkSize = 1ULL << uiLog2ContiguityGuarantee;
-	}
-	else
-	{
-		uiChunkSize = uiLogicalSize;
 	}
 
 	/* Extra checks required for sparse PMRs */
-	if (bSparse)
+	if (uiLogicalSize != uiChunkSize)
 	{
 		/* Check the logical size and chunk information agree with each other */
 		if (uiLogicalSize != (uiChunkSize * ui32NumVirtChunks))
@@ -412,6 +414,19 @@ _PMRCreate(PMR_SIZE_T uiLogicalSize,
 			PVR_DPF((PVR_DBG_ERROR, "%s: Bad mapping size (uiLogicalSize = 0x%llx, uiChunkSize = 0x%llx, ui32NumVirtChunks = %d)",
 					__func__, (unsigned long long)uiLogicalSize, (unsigned long long)uiChunkSize, ui32NumVirtChunks));
 			return PVRSRV_ERROR_PMR_BAD_MAPPINGTABLE_SIZE;
+		}
+
+		/* Check that the chunk size is a multiple of the contiguity */
+		OSDivide64(uiChunkSize, (1<< uiLog2ContiguityGuarantee), &ui32Remainder);
+		if (ui32Remainder)
+		{
+			PVR_DPF((PVR_DBG_ERROR,
+					"%s: Bad chunk size, must be a multiple of the contiguity "
+					"(uiChunkSize = 0x%llx, uiLog2ContiguityGuarantee = %u)",
+					__func__,
+					(unsigned long long) uiChunkSize,
+					uiLog2ContiguityGuarantee));
+			return PVRSRV_ERROR_PMR_BAD_CHUNK_SIZE;
 		}
 	}
 
@@ -463,6 +478,7 @@ _PMRCreate(PMR_SIZE_T uiLogicalSize,
 	psPMR->uiFlags = uiFlags;
 	psPMR->psMappingTable = psMappingTable;
 	psPMR->bSparseAlloc = bSparse;
+	psPMR->bIsUnpinned = IMG_FALSE;
 	psPMR->bNoLayoutChange = IMG_FALSE;
 	psPMR->szAnnotation[0] = '\0';
 
@@ -485,36 +501,33 @@ _PMRCreate(PMR_SIZE_T uiLogicalSize,
 	return PVRSRV_OK;
 }
 
+/* This function returns true if the PMR is in use and false otherwise.
+ * This function is not thread safe and hence the caller
+ * needs to ensure the thread safety by explicitly taking
+ * the lock on the PMR or through other means */
+IMG_BOOL PMRIsPMRLive(PMR *psPMR)
+{
+	return (OSAtomicRead(&psPMR->iRefCount) > 0);
+}
+
 static IMG_UINT32
 _Ref(PMR *psPMR)
 {
-	if (OSAtomicRead(&psPMR->iRefCount) == 0)
-	{
-		PVR_DPF((PVR_DBG_ERROR, "pmr.c: Ref Count == 0 PMR: @0x%p Annot: %s",
-		                        psPMR,
-		                        psPMR->szAnnotation));
-		OSWarnOn(1);
-	}
+	PVR_ASSERT(OSAtomicRead(&psPMR->iRefCount) >= 0);
 	return OSAtomicIncrement(&psPMR->iRefCount);
 }
 
 static IMG_UINT32
 _Unref(PMR *psPMR)
 {
-	if (OSAtomicRead(&psPMR->iRefCount) <= 0)
-	{
-		PVR_DPF((PVR_DBG_ERROR, "pmr.c: Unref Count <= 0 PMR: @0x%p Annot: %s RefCount: %d",
-		                        psPMR,
-		                        psPMR->szAnnotation,
-		                        (IMG_INT32) OSAtomicRead(&psPMR->iRefCount)));
-		OSWarnOn(1);
-	}
+	PVR_ASSERT(OSAtomicRead(&psPMR->iRefCount) > 0);
 	return OSAtomicDecrement(&psPMR->iRefCount);
 }
 
 static void
 _UnrefAndMaybeDestroy(PMR *psPMR)
 {
+	PVRSRV_ERROR eError2;
 	struct _PMR_CTX_ *psCtx;
 	IMG_INT iRefCount;
 
@@ -532,9 +545,31 @@ _UnrefAndMaybeDestroy(PMR *psPMR)
 	{
 		if (psPMR->psFuncTab->pfnFinalize != NULL)
 		{
-			psPMR->psFuncTab->pfnFinalize(psPMR->pvFlavourData);
-		}
+			eError2 = psPMR->psFuncTab->pfnFinalize(psPMR->pvFlavourData);
 
+			/* PMR unref can be called asynchronously by the kernel or other
+			 * third party modules (eg. display) which doesn't go through the
+			 * usual services bridge. The same PMR can be referenced simultaneously
+			 * in a different path that results in a race condition.
+			 * Hence depending on the race condition, a factory may refuse to destroy
+			 * the resource associated with this PMR if a reference on it was taken
+			 * prior to unref. In that case the PMR factory function returns the error.
+			 *
+			 * When such an error is encountered, the factory needs to ensure the state
+			 * associated with PMR is undisturbed. At this point we just bail out from
+			 * freeing the PMR itself. The PMR handle will then be freed at a later point
+			 * when the same PMR is unreferenced.
+			 * */
+			if (PVRSRV_ERROR_PMR_STILL_REFERENCED == eError2)
+			{
+				if (psPMR->psFuncTab->pfnReleasePMRFactoryLock)
+				{
+					psPMR->psFuncTab->pfnReleasePMRFactoryLock();
+				}
+				return;
+			}
+			PVR_ASSERT (eError2 == PVRSRV_OK); /* can we do better? */
+		}
 #if defined(PDUMP)
 		/* if allocation is done on the host node don't include it in the PDUMP */
 		if (!_IsHostDevicePMR(psPMR))
@@ -609,7 +644,7 @@ _UnrefAndMaybeDestroy(PMR *psPMR)
 	}
 }
 
-static INLINE IMG_BOOL _PMRIsSparse(const PMR *psPMR)
+static IMG_BOOL _PMRIsSparse(const PMR *psPMR)
 {
 	return psPMR->bSparseAlloc;
 }
@@ -617,6 +652,7 @@ static INLINE IMG_BOOL _PMRIsSparse(const PMR *psPMR)
 PVRSRV_ERROR
 PMRCreatePMR(PHYS_HEAP *psPhysHeap,
              PMR_SIZE_T uiLogicalSize,
+             PMR_SIZE_T uiChunkSize,
              IMG_UINT32 ui32NumPhysChunks,
              IMG_UINT32 ui32NumVirtChunks,
              IMG_UINT32 *pui32MappingTable,
@@ -635,6 +671,7 @@ PMRCreatePMR(PHYS_HEAP *psPhysHeap,
 	PVR_LOG_RETURN_IF_INVALID_PARAM(pszAnnotation != NULL, "pszAnnotation");
 
 	eError = _PMRCreate(uiLogicalSize,
+	                    uiChunkSize,
 	                    ui32NumPhysChunks,
 	                    ui32NumVirtChunks,
 	                    pui32MappingTable,
@@ -658,7 +695,7 @@ PMRCreatePMR(PHYS_HEAP *psPhysHeap,
 	{
 		PMR_FLAGS_T uiFlags = psPMR->uiFlags;
 		IMG_BOOL bInitialise = IMG_FALSE;
-		IMG_UINT8 ui8InitValue = 0;
+		IMG_UINT32 ui32InitValue = 0;
 
 		if (PVRSRV_CHECK_ZERO_ON_ALLOC(uiFlags))
 		{
@@ -666,19 +703,20 @@ PMRCreatePMR(PHYS_HEAP *psPhysHeap,
 		}
 		else if (PVRSRV_CHECK_POISON_ON_ALLOC(uiFlags))
 		{
-			ui8InitValue = (IMG_UINT8)PVRSRV_POISON_ON_ALLOC_VALUE;
+			ui32InitValue = 0xDEADBEEF;
 			bInitialise = IMG_TRUE;
 		}
 
 		PDumpPMRMallocPMR(psPMR,
-		                  uiLogicalSize,
+		                  (uiChunkSize * ui32NumVirtChunks),
 		                  1ULL<<uiLog2ContiguityGuarantee,
+		                  uiChunkSize,
 		                  ui32NumPhysChunks,
 		                  ui32NumVirtChunks,
 		                  pui32MappingTable,
 		                  uiLog2ContiguityGuarantee,
 		                  bInitialise,
-		                  ui8InitValue,
+		                  ui32InitValue,
 		                  &psPMR->hPDumpAllocHandle,
 		                  ui32PDumpFlags);
 	}
@@ -792,6 +830,62 @@ PMRUnlockSysPhysAddressesNested(PMR *psPMR, IMG_UINT32 ui32NestingLevel)
 	_UnrefAndMaybeDestroy(psPMR);
 
 	return PVRSRV_OK;
+}
+
+PVRSRV_ERROR
+PMRUnpinPMR(PMR *psPMR, IMG_BOOL bDevMapped)
+{
+	PVRSRV_ERROR eError = PVRSRV_OK;
+
+	PVR_ASSERT(psPMR != NULL);
+
+	OSLockAcquire(psPMR->hLock);
+	/* Stop if we still have references on the PMR */
+	if (   ( bDevMapped && (OSAtomicRead(&psPMR->iRefCount) > 2))
+			|| (!bDevMapped && (OSAtomicRead(&psPMR->iRefCount) > 1)) )
+	{
+		OSLockRelease(psPMR->hLock);
+		PVR_DPF((PVR_DBG_ERROR,
+				"%s: PMR is still referenced %u times. "
+				"That means this PMR is probably exported or used somewhere else. "
+				"Allowed are 2 references if it is mapped to device, otherwise 1.",
+				__func__,
+				OSAtomicRead(&psPMR->iRefCount)));
+		PVR_GOTO_WITH_ERROR(eError, PVRSRV_ERROR_PMR_STILL_REFERENCED, e_exit);
+	}
+	OSLockRelease(psPMR->hLock);
+
+	if (psPMR->psFuncTab->pfnUnpinMem != NULL)
+	{
+		eError = psPMR->psFuncTab->pfnUnpinMem(psPMR->pvFlavourData);
+		if (eError == PVRSRV_OK)
+		{
+			psPMR->bIsUnpinned = IMG_TRUE;
+		}
+	}
+
+e_exit:
+	return eError;
+}
+
+PVRSRV_ERROR
+PMRPinPMR(PMR *psPMR)
+{
+	PVRSRV_ERROR eError = PVRSRV_OK;
+
+	PVR_ASSERT(psPMR != NULL);
+
+	if (psPMR->psFuncTab->pfnPinMem != NULL)
+	{
+		eError = psPMR->psFuncTab->pfnPinMem(psPMR->pvFlavourData,
+		                                     psPMR->psMappingTable);
+		if (eError == PVRSRV_OK)
+		{
+			psPMR->bIsUnpinned = IMG_FALSE;
+		}
+	}
+
+	return eError;
 }
 
 PVRSRV_ERROR
@@ -1589,13 +1683,8 @@ PMR_WriteBytes(PMR *psPMR,
 }
 
 PVRSRV_ERROR
-PMRMMapPMR(PMR *psPMR, PMR_MMAP_DATA pOSMMapData, PVRSRV_MEMALLOCFLAGS_T uiFlags)
+PMRMMapPMR(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 {
-	/* if writeable mapping is requested on non-writeable PMR then fail */
-	PVR_RETURN_IF_FALSE(PVRSRV_CHECK_CPU_WRITEABLE(psPMR->uiFlags) ||
-	                    !PVRSRV_CHECK_CPU_WRITEABLE(uiFlags),
-	                    PVRSRV_ERROR_PMR_NOT_PERMITTED);
-
 	if (psPMR->psFuncTab->pfnMMap)
 	{
 		return psPMR->psFuncTab->pfnMMap(psPMR->pvFlavourData, psPMR, pOSMMapData);
@@ -1609,39 +1698,13 @@ PMRRefPMR(PMR *psPMR)
 {
 	PVR_ASSERT(psPMR != NULL);
 	_Ref(psPMR);
-
-	/* Lock phys addresses if PMR backing was allocated immediately */
-	if (PVRSRV_CHECK_PHYS_ALLOC_NOW(psPMR->uiFlags))
-	{
-		PMRLockSysPhysAddresses(psPMR);
-	}
 }
 
 PVRSRV_ERROR
 PMRUnrefPMR(PMR *psPMR)
 {
-	/* Unlock phys addresses if PMR backing was allocated immediately */
-	if (PVRSRV_CHECK_PHYS_ALLOC_NOW(psPMR->uiFlags))
-	{
-		PMRUnlockSysPhysAddresses(psPMR);
-	}
-
 	_UnrefAndMaybeDestroy(psPMR);
 	return PVRSRV_OK;
-}
-
-void
-PMRRefPMR2(PMR *psPMR)
-{
-	PVR_ASSERT(psPMR != NULL);
-	_Ref(psPMR);
-}
-
-void
-PMRUnrefPMR2(PMR *psPMR)
-{
-	PVR_ASSERT(psPMR != NULL);
-	_UnrefAndMaybeDestroy(psPMR);
 }
 
 PVRSRV_ERROR
@@ -1649,7 +1712,7 @@ PMRUnrefUnlockPMR(PMR *psPMR)
 {
 	PMRUnlockSysPhysAddresses(psPMR);
 
-	_UnrefAndMaybeDestroy(psPMR);
+	PMRUnrefPMR(psPMR);
 
 	return PVRSRV_OK;
 }
@@ -1676,6 +1739,14 @@ PMR_IsSparse(const PMR *psPMR)
 	PVR_ASSERT(psPMR != NULL);
 
 	return _PMRIsSparse(psPMR);
+}
+
+IMG_BOOL
+PMR_IsUnpinned(const PMR *psPMR)
+{
+	PVR_ASSERT(psPMR != NULL);
+
+	return psPMR->bIsUnpinned;
 }
 
 /* Function that alters the mutability property
@@ -1713,7 +1784,7 @@ PMR_PhysicalSize(const PMR *psPMR,
 	PVR_ASSERT(psPMR != NULL);
 
 	/* iLockCount will be > 0 for any backed PMR (backed on demand or not) */
-	if (OSAtomicRead(&psPMR->iLockCount) > 0)
+	if ((OSAtomicRead(&psPMR->iLockCount) > 0) && !psPMR->bIsUnpinned)
 	{
 		if (psPMR->bSparseAlloc)
 		{
@@ -1799,12 +1870,6 @@ PMR_GetLog2Contiguity(const PMR *psPMR)
 	return psPMR->uiLog2ContiguityGuarantee;
 }
 
-IMG_UINT32 PMRGetMaxChunkCount(PMR *psPMR)
-{
-	PVR_ASSERT(psPMR != NULL);
-	return (PMR_MAX_SUPPORTED_SIZE >> psPMR->uiLog2ContiguityGuarantee);
-}
-
 const IMG_CHAR *
 PMR_GetAnnotation(const PMR *psPMR)
 {
@@ -1861,41 +1926,42 @@ PMR_DevPhysAddr(const PMR *psPMR,
 	                                  puiPhysicalOffset,
 	                                  &ui32Remain,
 	                                  pbValid);
-
-	/* Sparse PMR may not always have the first page valid */
-	eError = psPMR->psFuncTab->pfnDevPhysAddr(psPMR->pvFlavourData,
-											  ui32Log2PageSize,
-											  ui32NumOfPages,
-											  puiPhysicalOffset,
-											  pbValid,
-											  psDevAddrPtr);
-	PVR_GOTO_IF_ERROR(eError, FreeOffsetArray);
+	if (*pbValid || _PMRIsSparse(psPMR))
+	{
+		/* Sparse PMR may not always have the first page valid */
+		eError = psPMR->psFuncTab->pfnDevPhysAddr(psPMR->pvFlavourData,
+		                                          ui32Log2PageSize,
+		                                          ui32NumOfPages,
+		                                          puiPhysicalOffset,
+		                                          pbValid,
+		                                          psDevAddrPtr);
+		PVR_GOTO_IF_ERROR(eError, FreeOffsetArray);
 
 #if defined(PVR_PMR_TRANSLATE_UMA_ADDRESSES)
-	/* Currently excluded from the default build because of performance
-	 * concerns.
-	 * We do not need this part in all systems because the GPU has the same
-	 * address view of system RAM as the CPU.
-	 * Alternatively this could be implemented as part of the PMR-factories
-	 * directly */
-	if (PhysHeapGetType(psPMR->psPhysHeap) == PHYS_HEAP_TYPE_UMA ||
-		PhysHeapGetType(psPMR->psPhysHeap) == PHYS_HEAP_TYPE_DMA)
-	{
-		IMG_UINT32 i;
-		IMG_DEV_PHYADDR sDevPAddrCorrected;
-
-		/* Copy the translated addresses to the correct array */
-		for (i = 0; i < ui32NumOfPages; i++)
+		/* Currently excluded from the default build because of performance
+		 * concerns.
+		 * We do not need this part in all systems because the GPU has the same
+		 * address view of system RAM as the CPU.
+		 * Alternatively this could be implemented as part of the PMR-factories
+		 * directly */
+		if (PhysHeapGetType(psPMR->psPhysHeap) == PHYS_HEAP_TYPE_UMA ||
+		    PhysHeapGetType(psPMR->psPhysHeap) == PHYS_HEAP_TYPE_DMA)
 		{
-			PhysHeapCpuPAddrToDevPAddr(psPMR->psPhysHeap,
-									   1,
-									   &sDevPAddrCorrected,
-									   (IMG_CPU_PHYADDR *) &psDevAddrPtr[i]);
-			psDevAddrPtr[i].uiAddr = sDevPAddrCorrected.uiAddr;
-		}
-	}
-#endif
+			IMG_UINT32 i;
+			IMG_DEV_PHYADDR sDevPAddrCorrected;
 
+			/* Copy the translated addresses to the correct array */
+			for (i = 0; i < ui32NumOfPages; i++)
+			{
+				PhysHeapCpuPAddrToDevPAddr(psPMR->psPhysHeap,
+				                           1,
+				                           &sDevPAddrCorrected,
+				                           (IMG_CPU_PHYADDR *) &psDevAddrPtr[i]);
+				psDevAddrPtr[i].uiAddr = sDevPAddrCorrected.uiAddr;
+			}
+		}
+#endif
+	}
 
 FreeOffsetArray:
 	if (puiPhysicalOffset != auiPhysicalOffset)
@@ -2002,10 +2068,8 @@ PVRSRV_ERROR PMR_ChangeSparseMem(PMR *psPMR,
 #if defined(PVRSRV_ENABLE_PROCESS_STATS)
 		if (eError == PVRSRV_ERROR_PMR_FAILED_TO_ALLOC_PAGES)
 		{
-			PVRSRVStatsUpdateOOMStat(NULL,
-									  PMR_DeviceNode(psPMR),
-									  PVRSRV_DEVICE_STAT_TYPE_OOM_PHYSMEM_COUNT,
-									  OSGetCurrentClientProcessIDKM());
+			PVRSRVStatsUpdateOOMStats(PVRSRV_PROCESS_STAT_TYPE_OOM_PHYSMEM_COUNT,
+						  OSGetCurrentClientProcessIDKM());
 		}
 #endif
 		goto e0;
@@ -2014,7 +2078,7 @@ PVRSRV_ERROR PMR_ChangeSparseMem(PMR *psPMR,
 #if defined(PDUMP)
 	{
 		IMG_BOOL bInitialise = IMG_FALSE;
-		IMG_UINT8 ui8InitValue = 0;
+		IMG_UINT32 ui32InitValue = 0;
 
 		if (PVRSRV_CHECK_ZERO_ON_ALLOC(PMR_Flags(psPMR)))
 		{
@@ -2022,7 +2086,7 @@ PVRSRV_ERROR PMR_ChangeSparseMem(PMR *psPMR,
 		}
 		else if (PVRSRV_CHECK_POISON_ON_ALLOC(PMR_Flags(psPMR)))
 		{
-			ui8InitValue = (IMG_UINT8)PVRSRV_POISON_ON_ALLOC_VALUE;
+			ui32InitValue = 0xDEADBEEF;
 			bInitialise = IMG_TRUE;
 		}
 
@@ -2033,7 +2097,7 @@ PVRSRV_ERROR PMR_ChangeSparseMem(PMR *psPMR,
 		                        ui32FreePageCount,
 		                        pai32FreeIndices,
 		                        bInitialise,
-		                        ui8InitValue,
+		                        ui32InitValue,
 		                        &psPMR->hPDumpAllocHandle);
 	}
 
@@ -2124,7 +2188,7 @@ _PMR_PDumpSymbolicAddrPhysical(const PMR *psPMR,
 	OSSNPrintf(pszSymbolicAddr,
 	           ui32SymbolicAddrLen,
 	           PMR_SYMBOLICADDR_FMTSPEC,
-	           PMR_IsSparse(psPMR) ? PMR_SPARSE_PREFIX : PMR_DEFAULT_PREFIX,
+	           PMR_DEFAULT_PREFIX,
 	           psPMR->uiSerialNum,
 	           uiPhysicalOffset >> PMR_GetLog2Contiguity(psPMR),
 	           psPMR->szAnnotation);
@@ -2567,9 +2631,6 @@ PMRPDumpLoadMem(PMR *psPMR,
 		return PVRSRV_OK;
 	}
 
-	/* Forcibly initialise the name to a 'NULL' 0-length string */
-	aszParamStreamFilename[0] = '\0';
-
 	PVR_ASSERT(uiLogicalOffset + uiSize <= psPMR->uiLogicalSize);
 
 	/* Check if pdump client is connected */
@@ -2637,7 +2698,6 @@ PMRPDumpLoadMem(PMR *psPMR,
 		if (bValid)
 		{
 			size_t uiNumBytes;
-			IMG_BOOL bOk2Write = IMG_TRUE;
 
 			if (bZero)
 			{
@@ -2664,35 +2724,29 @@ PMRPDumpLoadMem(PMR *psPMR,
 				                          &aszParamStreamFilename[0],
 				                          sizeof(aszParamStreamFilename),
 				                          &uiParamStreamFileOffset);
-
 				if (eError == PVRSRV_ERROR_PDUMP_NOT_ALLOWED)
 				{
 					/* Write to parameter file prevented under the flags and
 					 * current state of the driver so skip further writes.
 					 */
 					eError = PVRSRV_OK;
-					bOk2Write = IMG_FALSE;	/* Do *NOT* write anything */
 				}
 				else if (eError != PVRSRV_OK)
 				{
 					PDUMP_ERROR(psDevNode,
 					            eError, "Failed to write PMR memory to parameter file");
-					bOk2Write = IMG_FALSE;	/* Do *NOT* write anything */
 				}
 			}
 
-			if (bOk2Write)
-			{
-				/* Emit the LDB command to the current symbolic address */
-				eError = PDumpPMRLDB(psDevNode,
-				                     aszMemspaceName,
-				                     aszSymbolicName,
-				                     uiOutOffset,
-				                     uiNumBytes,
-				                     pszParamStreamFileName,
-				                     uiParamStreamFileOffset,
-				                     uiPDumpFlags);
-			}
+			/* Emit the LDB command to the current symbolic address */
+			eError = PDumpPMRLDB(psDevNode,
+			                     aszMemspaceName,
+			                     aszSymbolicName,
+			                     uiOutOffset,
+			                     uiNumBytes,
+			                     pszParamStreamFileName,
+			                     uiParamStreamFileOffset,
+			                     uiPDumpFlags);
 			uiSizeRemain = uiSizeRemain - uiNumBytes;
 		}
 		uiCurrentOffset = uiNextSymName;
@@ -2953,7 +3007,7 @@ PDumpPMRChangeSparsePMR(PMR *psPMR,
                         IMG_UINT32 ui32FreePageCount,
                         IMG_UINT32 *pai32FreeIndices,
                         IMG_BOOL bInitialise,
-                        IMG_UINT8 ui8InitValue,
+                        IMG_UINT32 ui32InitValue,
                         IMG_HANDLE *phPDumpAllocInfoOut)
 {
 	PVRSRV_ERROR eError;
@@ -3000,7 +3054,7 @@ PDumpPMRChangeSparsePMR(PMR *psPMR,
 		                     uiBlockSize,
 		                     uiBlockSize,
 		                     bInitialise,
-		                     ui8InitValue,
+		                     ui32InitValue,
 		                     &phPDumpAllocInfo[uiIndex],
 		                     PDUMP_NONE);
 		PVR_ASSERT(eError == PVRSRV_OK);
@@ -3023,33 +3077,31 @@ PDumpPMRFreePMR(PMR *psPMR,
 	/* (IMG_HANDLE*) <- (IMG_HANDLE) */
 	IMG_HANDLE *ahPDumpAllocHandleArray = (IMG_HANDLE*) hPDumpAllocationInfoHandle;
 
-	PDUMP_LOCK(PDUMP_FLAGS_NONE);
-
 	for (i = 0; i < psPMR->uiNumPDumpBlocks; i++)
 	{
 		if (ahPDumpAllocHandleArray[i] != NULL)
 		{
-			eError = PDumpFreeUnlocked(PMR_DeviceNode(psPMR),
-			                           ahPDumpAllocHandleArray[i]);
+			eError = PDumpFree(PMR_DeviceNode(psPMR),
+			                   ahPDumpAllocHandleArray[i]);
 			PVR_ASSERT(eError == PVRSRV_OK);
 			ahPDumpAllocHandleArray[i] = NULL;
 		}
 	}
 
-	PDUMP_UNLOCK(PDUMP_FLAGS_NONE);
 	OSFreeMem(ahPDumpAllocHandleArray);
 }
 
 static void
 PDumpPMRMallocPMR(PMR *psPMR,
                   IMG_DEVMEM_SIZE_T uiSize,
+                  IMG_DEVMEM_ALIGN_T uiBlockSize,
                   IMG_UINT32 ui32ChunkSize,
                   IMG_UINT32 ui32NumPhysChunks,
                   IMG_UINT32 ui32NumVirtChunks,
                   IMG_UINT32 *puiMappingTable,
                   IMG_UINT32 uiLog2Contiguity,
                   IMG_BOOL bInitialise,
-                  IMG_UINT8 ui8InitValue,
+                  IMG_UINT32 ui32InitValue,
                   IMG_HANDLE *phPDumpAllocInfoOut,
                   IMG_UINT32 ui32PDumpFlags)
 {
@@ -3084,14 +3136,13 @@ PDumpPMRMallocPMR(PMR *psPMR,
 
 	phPDumpAllocInfo = (IMG_HANDLE*) OSAllocZMem(uiNumVirtBlocks * sizeof(IMG_HANDLE));
 
-	PDUMP_LOCK(ui32PDumpFlags);
 
 	for (i = 0; i < uiNumPhysBlocks; i++)
 	{
 		uiIndex = PMR_IsSparse(psPMR) ? puiMappingTable[i] : i;
 
 		eError = PMR_PDumpSymbolicAddr(psPMR,
-		                               uiIndex * ui32ChunkSize,
+		                               uiIndex * uiBlockSize,
 		                               sizeof(aszMemspaceName),
 		                               &aszMemspaceName[0],
 		                               sizeof(aszSymbolicName),
@@ -3100,21 +3151,19 @@ PDumpPMRMallocPMR(PMR *psPMR,
 		                               &uiNextSymName);
 		PVR_ASSERT(eError == PVRSRV_OK);
 
-		eError = PDumpMallocUnlocked(PMR_DeviceNode(psPMR),
-		                             aszMemspaceName,
-		                             aszSymbolicName,
-		                             ui32ChunkSize,
-		                             ui32ChunkSize,
-		                             bInitialise,
-		                             ui8InitValue,
-		                             &phPDumpAllocInfo[uiIndex],
-		                             ui32PDumpFlags);
+		eError = PDumpMalloc(PMR_DeviceNode(psPMR),
+		                     aszMemspaceName,
+		                     aszSymbolicName,
+		                     uiBlockSize,
+		                     uiBlockSize,
+		                     bInitialise,
+		                     ui32InitValue,
+		                     &phPDumpAllocInfo[uiIndex],
+		                     ui32PDumpFlags);
 		PVR_LOG_RETURN_VOID_IF_FALSE((eError != PVRSRV_ERROR_PDUMP_CAPTURE_BOUND_TO_ANOTHER_DEVICE),
 		                             "PDumpPMRMalloc PDump capture bound to other device");
 		PVR_ASSERT(eError == PVRSRV_OK);
 	}
-
-	PDUMP_UNLOCK(ui32PDumpFlags);
 
 	/* (IMG_HANDLE) <- (IMG_HANDLE*) */
 	*phPDumpAllocInfoOut = (IMG_HANDLE) phPDumpAllocInfo;

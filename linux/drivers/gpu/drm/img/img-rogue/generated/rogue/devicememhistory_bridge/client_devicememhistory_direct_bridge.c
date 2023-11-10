@@ -51,7 +51,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "img_defs.h"
 #include "devicemem_typedefs.h"
 
-#include "pmr.h"
 #include "devicemem_history_server.h"
 
 IMG_INTERNAL PVRSRV_ERROR BridgeDevicememHistoryMap(IMG_HANDLE hBridge,

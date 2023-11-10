@@ -62,7 +62,7 @@ DevmemXPDumpLoadMem(DEVMEMX_PHYSDESC *psMemDescPhys,
 	PVR_ASSERT(uiOffset + uiSize <= (psMemDescPhys->uiNumPages <<
 			psMemDescPhys->uiLog2PageSize));
 
-	eError = BridgePMRPDumpLoadMem(GetBridgeHandle(psMemDescPhys->hConnection),
+	eError = BridgePMRPDumpLoadMem(psMemDescPhys->hBridge,
 	                               psMemDescPhys->hPMR,
 	                               uiOffset,
 	                               uiSize,

@@ -115,9 +115,7 @@ void trace_fence_check_disabled_callback(void)
 /* This is a helper that calls trace_rogue_fence_update for each fence in an
  * array.
  */
-void trace_rogue_fence_updates(const char *cmd, const char *dm,
-							   IMG_UINT32 ui32GpuId,
-							   IMG_UINT32 ui32FWContext,
+void trace_rogue_fence_updates(const char *cmd, const char *dm, IMG_UINT32 ui32FWContext,
 							   IMG_UINT32 ui32Offset,
 							   IMG_UINT uCount,
 							   PRGXFWIF_UFO_ADDR *pauiAddresses,
@@ -126,14 +124,12 @@ void trace_rogue_fence_updates(const char *cmd, const char *dm,
 	IMG_UINT i;
 	for (i = 0; i < uCount; i++)
 	{
-		trace_rogue_fence_update(current->comm, cmd, dm, ui32GpuId, ui32FWContext, ui32Offset,
+		trace_rogue_fence_update(current->comm, cmd, dm, ui32FWContext, ui32Offset,
 								 pauiAddresses[i].ui32Addr, PVRSRV_SYNC_CHECKPOINT_SIGNALLED);
 	}
 }
 
-void trace_rogue_fence_checks(const char *cmd, const char *dm,
-							  IMG_UINT32 ui32GpuId,
-							  IMG_UINT32 ui32FWContext,
+void trace_rogue_fence_checks(const char *cmd, const char *dm, IMG_UINT32 ui32FWContext,
 							  IMG_UINT32 ui32Offset,
 							  IMG_UINT uCount,
 							  PRGXFWIF_UFO_ADDR *pauiAddresses,
@@ -142,13 +138,12 @@ void trace_rogue_fence_checks(const char *cmd, const char *dm,
 	IMG_UINT i;
 	for (i = 0; i < uCount; i++)
 	{
-		trace_rogue_fence_check(current->comm, cmd, dm, ui32GpuId, ui32FWContext, ui32Offset,
+		trace_rogue_fence_check(current->comm, cmd, dm, ui32FWContext, ui32Offset,
 							  pauiAddresses[i].ui32Addr, PVRSRV_SYNC_CHECKPOINT_SIGNALLED);
 	}
 }
 
 void trace_rogue_ufo_updates(IMG_UINT64 ui64OSTimestamp,
-							 IMG_UINT32 ui32GpuId,
 							 IMG_UINT32 ui32FWCtx,
 							 IMG_UINT32 ui32ExtJobRef,
 							 IMG_UINT32 ui32IntJobRef,
@@ -158,7 +153,7 @@ void trace_rogue_ufo_updates(IMG_UINT64 ui64OSTimestamp,
 	IMG_UINT i;
 	for (i = 0; i < ui32UFOCount; i++)
 	{
-		trace_rogue_ufo_update(ui64OSTimestamp, ui32GpuId, ui32FWCtx,
+		trace_rogue_ufo_update(ui64OSTimestamp, ui32FWCtx,
 				ui32IntJobRef,
 				ui32ExtJobRef,
 				puData->sUpdate.ui32FWAddr,
@@ -169,7 +164,6 @@ void trace_rogue_ufo_updates(IMG_UINT64 ui64OSTimestamp,
 }
 
 void trace_rogue_ufo_checks_success(IMG_UINT64 ui64OSTimestamp,
-									IMG_UINT32 ui32GpuId,
 									IMG_UINT32 ui32FWCtx,
 									IMG_UINT32 ui32ExtJobRef,
 									IMG_UINT32 ui32IntJobRef,
@@ -182,14 +176,14 @@ void trace_rogue_ufo_checks_success(IMG_UINT64 ui64OSTimestamp,
 	{
 		if (bPrEvent)
 		{
-			trace_rogue_ufo_pr_check_success(ui64OSTimestamp, ui32GpuId, ui32FWCtx,
+			trace_rogue_ufo_pr_check_success(ui64OSTimestamp, ui32FWCtx,
 					ui32IntJobRef, ui32ExtJobRef,
 					puData->sCheckSuccess.ui32FWAddr,
 					puData->sCheckSuccess.ui32Value);
 		}
 		else
 		{
-			trace_rogue_ufo_check_success(ui64OSTimestamp, ui32GpuId, ui32FWCtx,
+			trace_rogue_ufo_check_success(ui64OSTimestamp, ui32FWCtx,
 					ui32IntJobRef, ui32ExtJobRef,
 					puData->sCheckSuccess.ui32FWAddr,
 					puData->sCheckSuccess.ui32Value);
@@ -199,7 +193,6 @@ void trace_rogue_ufo_checks_success(IMG_UINT64 ui64OSTimestamp,
 }
 
 void trace_rogue_ufo_checks_fail(IMG_UINT64 ui64OSTimestamp,
-								 IMG_UINT32 ui32GpuId,
 								 IMG_UINT32 ui32FWCtx,
 								 IMG_UINT32 ui32ExtJobRef,
 								 IMG_UINT32 ui32IntJobRef,
@@ -212,7 +205,7 @@ void trace_rogue_ufo_checks_fail(IMG_UINT64 ui64OSTimestamp,
 	{
 		if (bPrEvent)
 		{
-			trace_rogue_ufo_pr_check_fail(ui64OSTimestamp, ui32GpuId, ui32FWCtx,
+			trace_rogue_ufo_pr_check_fail(ui64OSTimestamp, ui32FWCtx,
 					ui32IntJobRef, ui32ExtJobRef,
 					puData->sCheckFail.ui32FWAddr,
 					puData->sCheckFail.ui32Value,
@@ -220,7 +213,7 @@ void trace_rogue_ufo_checks_fail(IMG_UINT64 ui64OSTimestamp,
 		}
 		else
 		{
-			trace_rogue_ufo_check_fail(ui64OSTimestamp, ui32GpuId, ui32FWCtx,
+			trace_rogue_ufo_check_fail(ui64OSTimestamp, ui32FWCtx,
 					ui32IntJobRef, ui32ExtJobRef,
 					puData->sCheckFail.ui32FWAddr,
 					puData->sCheckFail.ui32Value,

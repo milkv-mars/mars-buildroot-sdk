@@ -72,9 +72,6 @@ static PVRSRV_ERROR _DICreateContextpsContextIntRelease(void *pvData)
 	return eError;
 }
 
-static_assert(PRVSRVTL_MAX_STREAM_NAME_SIZE <= IMG_UINT32_MAX,
-	      "PRVSRVTL_MAX_STREAM_NAME_SIZE must not be larger than IMG_UINT32_MAX");
-
 static IMG_INT
 PVRSRVBridgeDICreateContext(IMG_UINT32 ui32DispatchTableEntry,
 			    IMG_UINT8 * psDICreateContextIN_UI8,
@@ -90,7 +87,9 @@ PVRSRVBridgeDICreateContext(IMG_UINT32 ui32DispatchTableEntry,
 
 	IMG_UINT32 ui32NextOffset = 0;
 	IMG_BYTE *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
 	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
 
 	IMG_UINT32 ui32BufferSize = 0;
 	IMG_UINT64 ui64BufferSize =
@@ -110,6 +109,7 @@ PVRSRVBridgeDICreateContext(IMG_UINT32 ui32DispatchTableEntry,
 
 	if (ui32BufferSize != 0)
 	{
+#if !defined(INTEGRITY_OS)
 		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
 		IMG_UINT32 ui32InBufferOffset =
 		    PVR_ALIGN(sizeof(*psDICreateContextIN), sizeof(unsigned long));
@@ -125,6 +125,7 @@ PVRSRVBridgeDICreateContext(IMG_UINT32 ui32DispatchTableEntry,
 			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];
 		}
 		else
+#endif
 		{
 			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
 
@@ -198,7 +199,11 @@ DICreateContext_exit:
 		PVR_ASSERT(ui32BufferSize == ui32NextOffset);
 #endif /* PVRSRV_NEED_PVR_ASSERT */
 
+#if defined(INTEGRITY_OS)
+	if (pArrayArgsBuffer)
+#else
 	if (!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
 		OSFreeMemNoStats(pArrayArgsBuffer);
 
 	return 0;
@@ -258,7 +263,9 @@ PVRSRVBridgeDIReadEntry(IMG_UINT32 ui32DispatchTableEntry,
 
 	IMG_UINT32 ui32NextOffset = 0;
 	IMG_BYTE *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
 	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
 
 	IMG_UINT32 ui32BufferSize = 0;
 	IMG_UINT64 ui64BufferSize = ((IMG_UINT64) DI_IMPL_BRG_PATH_LEN * sizeof(IMG_CHAR)) + 0;
@@ -273,6 +280,7 @@ PVRSRVBridgeDIReadEntry(IMG_UINT32 ui32DispatchTableEntry,
 
 	if (ui32BufferSize != 0)
 	{
+#if !defined(INTEGRITY_OS)
 		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
 		IMG_UINT32 ui32InBufferOffset =
 		    PVR_ALIGN(sizeof(*psDIReadEntryIN), sizeof(unsigned long));
@@ -288,6 +296,7 @@ PVRSRVBridgeDIReadEntry(IMG_UINT32 ui32DispatchTableEntry,
 			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];
 		}
 		else
+#endif
 		{
 			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
 
@@ -358,7 +367,11 @@ DIReadEntry_exit:
 		PVR_ASSERT(ui32BufferSize == ui32NextOffset);
 #endif /* PVRSRV_NEED_PVR_ASSERT */
 
+#if defined(INTEGRITY_OS)
+	if (pArrayArgsBuffer)
+#else
 	if (!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
 		OSFreeMemNoStats(pArrayArgsBuffer);
 
 	return 0;
@@ -386,7 +399,9 @@ PVRSRVBridgeDIWriteEntry(IMG_UINT32 ui32DispatchTableEntry,
 
 	IMG_UINT32 ui32NextOffset = 0;
 	IMG_BYTE *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
 	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
 
 	IMG_UINT32 ui32BufferSize = 0;
 	IMG_UINT64 ui64BufferSize =
@@ -409,6 +424,7 @@ PVRSRVBridgeDIWriteEntry(IMG_UINT32 ui32DispatchTableEntry,
 
 	if (ui32BufferSize != 0)
 	{
+#if !defined(INTEGRITY_OS)
 		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
 		IMG_UINT32 ui32InBufferOffset =
 		    PVR_ALIGN(sizeof(*psDIWriteEntryIN), sizeof(unsigned long));
@@ -424,6 +440,7 @@ PVRSRVBridgeDIWriteEntry(IMG_UINT32 ui32DispatchTableEntry,
 			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];
 		}
 		else
+#endif
 		{
 			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
 
@@ -514,7 +531,11 @@ DIWriteEntry_exit:
 		PVR_ASSERT(ui32BufferSize == ui32NextOffset);
 #endif /* PVRSRV_NEED_PVR_ASSERT */
 
+#if defined(INTEGRITY_OS)
+	if (pArrayArgsBuffer)
+#else
 	if (!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
 		OSFreeMemNoStats(pArrayArgsBuffer);
 
 	return 0;

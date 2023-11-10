@@ -134,9 +134,7 @@ PVRSRVBridgePVRSRVPDumpSetDefaultCaptureParams(IMG_UINT32 ui32DispatchTableEntry
 					   psPVRSRVPDumpSetDefaultCaptureParamsIN->ui32End,
 					   psPVRSRVPDumpSetDefaultCaptureParamsIN->ui32Interval,
 					   psPVRSRVPDumpSetDefaultCaptureParamsIN->
-					   ui32MaxParamFileSize,
-					   psPVRSRVPDumpSetDefaultCaptureParamsIN->
-					   ui32AutoTermTimeout);
+					   ui32MaxParamFileSize);
 
 	return 0;
 }

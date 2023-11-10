@@ -66,27 +66,6 @@ PvzServerLockRelease(void)
 	OSLockRelease(psPVRSRVData->hPvzConnectionLock);
 }
 
-#define VALIDATE_DRVID_DEVID(ui32DriverID, ui32DevID) do {							\
-	if ((ui32DriverID >= RGX_NUM_DRIVERS_SUPPORTED) ||								\
-		(ui32DriverID < RGXFW_GUEST_DRIVER_ID_START))								\
-	{																				\
-		PVR_DPF((PVR_DBG_ERROR,														\
-					"%s: Invalid OSID %u. Supported Guest OSID range: %u - %u",		\
-					__func__,														\
-					ui32DriverID,													\
-					RGXFW_GUEST_DRIVER_ID_START,									\
-					RGX_NUM_DRIVERS_SUPPORTED-1));									\
-		return PVRSRV_ERROR_INVALID_PARAMS;											\
-	}																				\
-	if (PVRSRVGetDeviceInstance(ui32DevID) == NULL)									\
-	{																				\
-		PVR_DPF((PVR_DBG_ERROR,														\
-					"%s: Invalid Device ID %u.",									\
-					__func__,														\
-					ui32DevID));													\
-		return PVRSRV_ERROR_INVALID_PARAMS;											\
-	}																				\
-} while (false);
 
 /*
  * ===========================================================
@@ -98,7 +77,8 @@ PvzServerLockRelease(void)
  */
 
 PVRSRV_ERROR
-PvzServerMapDevPhysHeap(IMG_UINT32 ui32DriverID,
+PvzServerMapDevPhysHeap(IMG_UINT32 ui32OSID,
+						IMG_UINT32 ui32FuncID,
 						IMG_UINT32 ui32DevID,
 						IMG_UINT64 ui64Size,
 						IMG_UINT64 ui64PAddr)
@@ -109,24 +89,36 @@ PvzServerMapDevPhysHeap(IMG_UINT32 ui32DriverID,
 		 * preallocate the Guest's firmware heaps from static carveout memory.
 		 */
 		PVR_DPF((PVR_DBG_ERROR,
-		         "%s: Host PVZ config: Does not match with Guest PVZ config."
-		         " Host preallocates the Guest's FW physheap from static memory carveouts at startup.", __func__));
+		         "%s: Host PVZ config: Does not match with Guest PVZ config\n"
+		         "    Host preallocates the Guest's FW physheap from static memory carveouts at startup.\n", __func__));
 		return PVRSRV_ERROR_INVALID_PVZ_CONFIG;
 #else
 	PVRSRV_ERROR eError = PVRSRV_OK;
 
-	VALIDATE_DRVID_DEVID(ui32DriverID, ui32DevID);
+	PVR_LOG_RETURN_IF_FALSE((ui32DevID == 0), "Invalid Device ID", PVRSRV_ERROR_INVALID_PARAMS);
+
+	if (ui32FuncID != PVZ_BRIDGE_MAPDEVICEPHYSHEAP)
+	{
+		PVR_DPF((PVR_DBG_ERROR,
+				"%s: Host PVZ call: OSID: %d: Invalid function ID: expected %d, got %d",
+				__func__,
+				ui32OSID,
+				(IMG_UINT32)PVZ_BRIDGE_MAPDEVICEPHYSHEAP,
+				ui32FuncID));
+		return PVRSRV_ERROR_INVALID_PARAMS;
+	}
 
 	PvzServerLockAcquire();
 
 #if defined(SUPPORT_RGX)
-	if (IsVmOnline(ui32DriverID, ui32DevID))
+	if (IsVmOnline(ui32OSID))
 	{
-		PVRSRV_DEVICE_NODE *psDeviceNode = PVRSRVGetDeviceInstance(ui32DevID);
+		PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
+		PVRSRV_DEVICE_NODE *psDeviceNode = psPVRSRVData->psDeviceNodeList;
 		IMG_DEV_PHYADDR sDevPAddr = {ui64PAddr};
 		IMG_UINT32 sync;
 
-		eError = RGXFwRawHeapAllocMap(psDeviceNode, ui32DriverID, sDevPAddr, ui64Size);
+		eError = RGXFwRawHeapAllocMap(psDeviceNode, ui32OSID, sDevPAddr, ui64Size);
 		PVR_LOG_GOTO_IF_ERROR(eError, "RGXFwRawHeapAllocMap", e0);
 
 		/* Invalidate MMU cache in preparation for a kick from this Guest */
@@ -134,7 +126,7 @@ PvzServerMapDevPhysHeap(IMG_UINT32 ui32DriverID,
 		PVR_LOG_GOTO_IF_ERROR(eError, "MMUCacheInvalidateKick", e0);
 
 		/* Everything is ready for the firmware to start interacting with this OS */
-		eError = RGXFWSetFwOsState(psDeviceNode->pvDevice, ui32DriverID, RGXFWIF_OS_ONLINE);
+		eError = RGXFWSetFwOsState(psDeviceNode->pvDevice, ui32OSID, RGXFWIF_OS_ONLINE);
 	}
 e0:
 #endif /* defined(SUPPORT_RGX) */
@@ -145,7 +137,8 @@ e0:
 }
 
 PVRSRV_ERROR
-PvzServerUnmapDevPhysHeap(IMG_UINT32 ui32DriverID,
+PvzServerUnmapDevPhysHeap(IMG_UINT32 ui32OSID,
+						  IMG_UINT32 ui32FuncID,
 						  IMG_UINT32 ui32DevID)
 {
 #if defined(RGX_VZ_STATIC_CARVEOUT_FW_HEAPS)
@@ -160,21 +153,33 @@ PvzServerUnmapDevPhysHeap(IMG_UINT32 ui32DriverID,
 #else
 	PVRSRV_ERROR eError = PVRSRV_OK;
 
-	VALIDATE_DRVID_DEVID(ui32DriverID, ui32DevID);
+	PVR_LOG_RETURN_IF_FALSE((ui32DevID == 0), "Invalid Device ID", PVRSRV_ERROR_INVALID_PARAMS);
+
+	if (ui32FuncID != PVZ_BRIDGE_UNMAPDEVICEPHYSHEAP)
+	{
+		PVR_DPF((PVR_DBG_ERROR,
+				"%s: Host PVZ call: OSID: %d: Invalid function ID: expected %d, got %d",
+				__func__,
+				ui32OSID,
+				(IMG_UINT32)PVZ_BRIDGE_UNMAPDEVICEPHYSHEAP,
+				ui32FuncID));
+		return PVRSRV_ERROR_INVALID_PARAMS;
+	}
 
 	PvzServerLockAcquire();
 
 #if defined(SUPPORT_RGX)
-	if (IsVmOnline(ui32DriverID, ui32DevID))
+	if (IsVmOnline(ui32OSID))
 	{
-		PVRSRV_DEVICE_NODE *psDeviceNode = PVRSRVGetDeviceInstance(ui32DevID);
+		PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
+		PVRSRV_DEVICE_NODE *psDeviceNode = psPVRSRVData->psDeviceNodeList;
 
 		/* Order firmware to offload this OS' data and stop accepting commands from it */
-		eError = RGXFWSetFwOsState(psDeviceNode->pvDevice, ui32DriverID, RGXFWIF_OS_OFFLINE);
+		eError = RGXFWSetFwOsState(psDeviceNode->pvDevice, ui32OSID, RGXFWIF_OS_OFFLINE);
 		PVR_LOG_GOTO_IF_ERROR(eError, "RGXFWSetFwOsState", e0);
 
 		/* it is now safe to remove the Guest's memory mappings  */
-		RGXFwRawHeapUnmapFree(psDeviceNode, ui32DriverID);
+		RGXFwRawHeapUnmapFree(psDeviceNode, ui32OSID);
 	}
 e0:
 #endif
@@ -194,43 +199,42 @@ e0:
  */
 
 PVRSRV_ERROR
-PvzServerOnVmOnline(IMG_UINT32 ui32DriverID,
-					IMG_UINT32 ui32DevID)
+PvzServerOnVmOnline(IMG_UINT32 ui32OSID)
 {
 	PVRSRV_ERROR eError;
 
-	VALIDATE_DRVID_DEVID(ui32DriverID, ui32DevID);
 	PvzServerLockAcquire();
-	eError = PvzOnVmOnline(ui32DriverID, ui32DevID);
+
+	eError = PvzOnVmOnline(ui32OSID);
+
 	PvzServerLockRelease();
 
 	return eError;
 }
 
 PVRSRV_ERROR
-PvzServerOnVmOffline(IMG_UINT32 ui32DriverID,
-					 IMG_UINT32 ui32DevID)
+PvzServerOnVmOffline(IMG_UINT32 ui32OSID)
 {
 	PVRSRV_ERROR eError;
 
-	VALIDATE_DRVID_DEVID(ui32DriverID, ui32DevID);
 	PvzServerLockAcquire();
-	eError = PvzOnVmOffline(ui32DriverID, ui32DevID);
+
+	eError = PvzOnVmOffline(ui32OSID);
+
 	PvzServerLockRelease();
 
 	return eError;
 }
 
 PVRSRV_ERROR
-PvzServerVMMConfigure(VMM_CONF_PARAM eVMMParamType,
-					  IMG_UINT32 ui32ParamValue,
-					  IMG_UINT32 ui32DevID)
+PvzServerVMMConfigure(VMM_CONF_PARAM eVMMParamType, IMG_UINT32 ui32ParamValue)
 {
 	PVRSRV_ERROR eError;
 
-	VALIDATE_DRVID_DEVID(RGXFW_GUEST_DRIVER_ID_START, ui32DevID);
 	PvzServerLockAcquire();
-	eError = PvzVMMConfigure(eVMMParamType, ui32ParamValue, ui32DevID);
+
+	eError = PvzVMMConfigure(eVMMParamType, ui32ParamValue);
+
 	PvzServerLockRelease();
 
 	return eError;
