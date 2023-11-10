@@ -73,16 +73,15 @@ void trace_fence_update_disabled_callback(void);
 
 TRACE_EVENT_FN(rogue_fence_update,
 
-	TP_PROTO(const char *comm, const char *cmd, const char *dm, u32 gpu_id, u32 ctx_id, u32 offset,
+	TP_PROTO(const char *comm, const char *cmd, const char *dm, u32 ctx_id, u32 offset,
 		u32 sync_fwaddr, u32 sync_value),
 
-	TP_ARGS(comm, cmd, dm, gpu_id, ctx_id, offset, sync_fwaddr, sync_value),
+	TP_ARGS(comm, cmd, dm, ctx_id, offset, sync_fwaddr, sync_value),
 
 	TP_STRUCT__entry(
 		__string(       comm,           comm            )
 		__string(       cmd,            cmd             )
 		__string(       dm,             dm              )
-		__field(        u32,            gpu_id          )
 		__field(        u32,            ctx_id          )
 		__field(        u32,            offset          )
 		__field(        u32,            sync_fwaddr     )
@@ -93,23 +92,20 @@ TRACE_EVENT_FN(rogue_fence_update,
 		__assign_str(comm, comm);
 		__assign_str(cmd, cmd);
 		__assign_str(dm, dm);
-		__entry->gpu_id = gpu_id;
 		__entry->ctx_id = ctx_id;
 		__entry->offset = offset;
 		__entry->sync_fwaddr = sync_fwaddr;
 		__entry->sync_value = sync_value;
 	),
 
-	TP_printk("comm=%s cmd=%s dm=%s gpu=%lu ctx_id=%lu offset=%lu sync_fwaddr=%#lx sync_value=%#lx",
+	TP_printk("comm=%s cmd=%s dm=%s ctx_id=%lu offset=%lu sync_fwaddr=%#lx sync_value=%#lx",
 		__get_str(comm),
 		__get_str(cmd),
 		__get_str(dm),
-		(unsigned long) __entry->gpu_id,
-		(unsigned long) __entry->ctx_id,
-		(unsigned long) __entry->offset,
-		(unsigned long) __entry->sync_fwaddr,
-		(unsigned long) __entry->sync_value
-	),
+		(unsigned long)__entry->ctx_id,
+		(unsigned long)__entry->offset,
+		(unsigned long)__entry->sync_fwaddr,
+		(unsigned long)__entry->sync_value),
 
 	trace_fence_update_enabled_callback,
 	trace_fence_update_disabled_callback
@@ -124,16 +120,15 @@ void trace_fence_check_disabled_callback(void);
 
 TRACE_EVENT_FN(rogue_fence_check,
 
-	TP_PROTO(const char *comm, const char *cmd, const char *dm, u32 gpu_id, u32 ctx_id, u32 offset,
+	TP_PROTO(const char *comm, const char *cmd, const char *dm, u32 ctx_id, u32 offset,
 		u32 sync_fwaddr, u32 sync_value),
 
-	TP_ARGS(comm, cmd, dm, gpu_id, ctx_id, offset, sync_fwaddr, sync_value),
+	TP_ARGS(comm, cmd, dm, ctx_id, offset, sync_fwaddr, sync_value),
 
 	TP_STRUCT__entry(
 		__string(       comm,           comm            )
 		__string(       cmd,            cmd             )
 		__string(       dm,             dm              )
-		__field(        u32,            gpu_id          )
 		__field(        u32,            ctx_id          )
 		__field(        u32,            offset          )
 		__field(        u32,            sync_fwaddr     )
@@ -144,23 +139,20 @@ TRACE_EVENT_FN(rogue_fence_check,
 		__assign_str(comm, comm);
 		__assign_str(cmd, cmd);
 		__assign_str(dm, dm);
-		__entry->gpu_id = gpu_id;
 		__entry->ctx_id = ctx_id;
 		__entry->offset = offset;
 		__entry->sync_fwaddr = sync_fwaddr;
 		__entry->sync_value = sync_value;
 	),
 
-	TP_printk("comm=%s cmd=%s dm=%s gpu=%lu ctx_id=%lu offset=%lu sync_fwaddr=%#lx sync_value=%#lx",
+	TP_printk("comm=%s cmd=%s dm=%s ctx_id=%lu offset=%lu sync_fwaddr=%#lx sync_value=%#lx",
 		__get_str(comm),
 		__get_str(cmd),
 		__get_str(dm),
-		(unsigned long)__entry->gpu_id,
 		(unsigned long)__entry->ctx_id,
 		(unsigned long)__entry->offset,
 		(unsigned long)__entry->sync_fwaddr,
-		(unsigned long)__entry->sync_value
-	),
+		(unsigned long)__entry->sync_value),
 
 	trace_fence_check_enabled_callback,
 	trace_fence_check_disabled_callback
@@ -168,13 +160,12 @@ TRACE_EVENT_FN(rogue_fence_check,
 
 TRACE_EVENT(rogue_job_enqueue,
 
-	TP_PROTO(u32 gpu_id, u32 ctx_id, u32 int_id, u32 ext_id,
+	TP_PROTO(u32 ctx_id, u32 int_id, u32 ext_id,
 	         const char *kick_type),
 
-	TP_ARGS(gpu_id, ctx_id, int_id, ext_id, kick_type),
+	TP_ARGS(ctx_id, int_id, ext_id, kick_type),
 
 	TP_STRUCT__entry(
-		__field(u32, gpu_id)
 		__field(u32, ctx_id)
 		__field(u32, int_id)
 		__field(u32, ext_id)
@@ -182,15 +173,13 @@ TRACE_EVENT(rogue_job_enqueue,
 	),
 
 	TP_fast_assign(
-		__entry->gpu_id = gpu_id;
 		__entry->ctx_id = ctx_id;
 		__entry->int_id = int_id;
 		__entry->ext_id = ext_id;
 		__assign_str(kick_type, kick_type);
 	),
 
-	TP_printk("gpu=%lu, ctx_id=%lu int_id=%lu ext_id=%lu kick_type=%s",
-		(unsigned long) __entry->gpu_id,
+	TP_printk("ctx_id=%lu int_id=%lu ext_id=%lu kick_type=%s",
 		(unsigned long) __entry->ctx_id,
 		(unsigned long) __entry->int_id,
 		(unsigned long) __entry->ext_id,
@@ -200,17 +189,15 @@ TRACE_EVENT(rogue_job_enqueue,
 
 TRACE_EVENT(rogue_sched_switch,
 
-	TP_PROTO(const char *work_type, u32 switch_type, u64 timestamp, u32 gpu_id, u32 next_ctx_id,
+	TP_PROTO(const char *work_type, u32 switch_type, u64 timestamp, u32 next_ctx_id,
 	         u32 next_prio, u32 next_int_id, u32 next_ext_id),
 
-	TP_ARGS(work_type, switch_type, timestamp, gpu_id, next_ctx_id, next_prio, next_int_id,
-	        next_ext_id),
+	TP_ARGS(work_type, switch_type, timestamp, next_ctx_id, next_prio, next_int_id, next_ext_id),
 
 	TP_STRUCT__entry(
 		__string(work_type, work_type)
 		__field(u32, switch_type)
 		__field(u64, timestamp)
-		__field(u32, gpu_id)
 		__field(u32, next_ctx_id)
 		__field(u32, next_prio)
 		__field(u32, next_int_id)
@@ -221,18 +208,16 @@ TRACE_EVENT(rogue_sched_switch,
 		__assign_str(work_type, work_type);
 		__entry->switch_type = switch_type;
 		__entry->timestamp = timestamp;
-		__entry->gpu_id = gpu_id;
 		__entry->next_ctx_id = next_ctx_id;
 		__entry->next_prio = next_prio;
 		__entry->next_int_id = next_int_id;
 		__entry->next_ext_id = next_ext_id;
 	),
 
-	TP_printk("ts=%llu.%06lu gpu=%lu next_ctx_id=%lu next_int_id=%lu next_ext_id=%lu"
+	TP_printk("ts=%llu.%06lu next_ctx_id=%lu next_int_id=%lu next_ext_id=%lu"
 		" next_prio=%lu work_type=%s switch_type=%s",
 		(unsigned long long) show_secs_from_ns(__entry->timestamp),
 		(unsigned long) show_usecs_from_ns(__entry->timestamp),
-		(unsigned long) __entry->gpu_id,
 		(unsigned long) __entry->next_ctx_id,
 		(unsigned long) __entry->next_int_id,
 		(unsigned long) __entry->next_ext_id,
@@ -247,30 +232,26 @@ TRACE_EVENT(rogue_sched_switch,
 
 TRACE_EVENT(rogue_create_fw_context,
 
-	TP_PROTO(const char *comm, const char *dm, u32 gpu_id, u32 ctx_id),
+	TP_PROTO(const char *comm, const char *dm, u32 ctx_id),
 
-	TP_ARGS(comm, dm, gpu_id, ctx_id),
+	TP_ARGS(comm, dm, ctx_id),
 
 	TP_STRUCT__entry(
 		__string(       comm,           comm            )
 		__string(       dm,             dm              )
-		__field(        u32,            gpu_id          )
 		__field(        u32,            ctx_id          )
 	),
 
 	TP_fast_assign(
 		__assign_str(comm, comm);
 		__assign_str(dm, dm);
-		__entry->gpu_id = gpu_id;
 		__entry->ctx_id = ctx_id;
 	),
 
-	TP_printk("comm=%s dm=%s gpu=%lu ctx_id=%lu",
+	TP_printk("comm=%s dm=%s ctx_id=%lu",
 		__get_str(comm),
 		__get_str(dm),
-		(unsigned long) __entry->gpu_id,
-		(unsigned long) __entry->ctx_id
-	)
+		(unsigned long)__entry->ctx_id)
 );
 
 void PVRGpuTraceEnableUfoCallback(void);
@@ -284,15 +265,14 @@ int PVRGpuTraceEnableUfoCallbackWrapper(void);
 
 TRACE_EVENT_FN(rogue_ufo_update,
 
-	TP_PROTO(u64 timestamp, u32 gpu_id, u32 ctx_id, u32 int_id, u32 ext_id,
+	TP_PROTO(u64 timestamp, u32 ctx_id, u32 int_id, u32 ext_id,
 	         u32 fwaddr, u32 old_value, u32 new_value),
 
-	TP_ARGS(timestamp, gpu_id, ctx_id, int_id, ext_id, fwaddr, old_value,
+	TP_ARGS(timestamp, ctx_id, int_id, ext_id, fwaddr, old_value,
 	        new_value),
 
 	TP_STRUCT__entry(
 		__field(        u64,            timestamp   )
-		__field(        u32,            gpu_id      )
 		__field(        u32,            ctx_id      )
 		__field(        u32,            int_id      )
 		__field(        u32,            ext_id      )
@@ -303,7 +283,6 @@ TRACE_EVENT_FN(rogue_ufo_update,
 
 	TP_fast_assign(
 		__entry->timestamp = timestamp;
-		__entry->gpu_id = gpu_id;
 		__entry->ctx_id = ctx_id;
 		__entry->int_id = int_id;
 		__entry->ext_id = ext_id;
@@ -312,33 +291,29 @@ TRACE_EVENT_FN(rogue_ufo_update,
 		__entry->new_value = new_value;
 	),
 
-	TP_printk("ts=%llu.%06lu gpu=%lu ctx_id=%lu int_id=%lu ext_id=%lu"
+	TP_printk("ts=%llu.%06lu ctx_id=%lu int_id=%lu ext_id=%lu"
 		" fwaddr=%#lx old_value=%#lx new_value=%#lx",
 		(unsigned long long)show_secs_from_ns(__entry->timestamp),
 		(unsigned long)show_usecs_from_ns(__entry->timestamp),
-		(unsigned long) __entry->gpu_id,
-		(unsigned long) __entry->ctx_id,
-		(unsigned long) __entry->int_id,
-		(unsigned long) __entry->ext_id,
-		(unsigned long) __entry->fwaddr,
-		(unsigned long) __entry->old_value,
-		(unsigned long) __entry->new_value
-	),
-
+		(unsigned long)__entry->ctx_id,
+		(unsigned long)__entry->int_id,
+		(unsigned long)__entry->ext_id,
+		(unsigned long)__entry->fwaddr,
+		(unsigned long)__entry->old_value,
+		(unsigned long)__entry->new_value),
 	PVRGpuTraceEnableUfoCallbackWrapper,
 	PVRGpuTraceDisableUfoCallback
 );
 
 TRACE_EVENT_FN(rogue_ufo_check_fail,
 
-	TP_PROTO(u64 timestamp, u32 gpu_id, u32 ctx_id, u32 int_id, u32 ext_id,
+	TP_PROTO(u64 timestamp, u32 ctx_id, u32 int_id, u32 ext_id,
 	         u32 fwaddr, u32 value, u32 required),
 
-	TP_ARGS(timestamp, gpu_id, ctx_id, int_id, ext_id, fwaddr, value, required),
+	TP_ARGS(timestamp, ctx_id, int_id, ext_id, fwaddr, value, required),
 
 	TP_STRUCT__entry(
 		__field(        u64,            timestamp   )
-		__field(        u32,            gpu_id      )
 		__field(        u32,            ctx_id      )
 		__field(        u32,            int_id      )
 		__field(        u32,            ext_id      )
@@ -349,7 +324,6 @@ TRACE_EVENT_FN(rogue_ufo_check_fail,
 
 	TP_fast_assign(
 		__entry->timestamp = timestamp;
-		__entry->gpu_id = gpu_id;
 		__entry->ctx_id = ctx_id;
 		__entry->int_id = int_id;
 		__entry->ext_id = ext_id;
@@ -358,33 +332,29 @@ TRACE_EVENT_FN(rogue_ufo_check_fail,
 		__entry->required = required;
 	),
 
-	TP_printk("ts=%llu.%06lu gpu=%lu ctx_id=%lu int_id=%lu ext_id=%lu"
+	TP_printk("ts=%llu.%06lu ctx_id=%lu int_id=%lu ext_id=%lu"
 		" fwaddr=%#lx value=%#lx required=%#lx",
 		(unsigned long long)show_secs_from_ns(__entry->timestamp),
 		(unsigned long)show_usecs_from_ns(__entry->timestamp),
-		(unsigned long) __entry->gpu_id,
-		(unsigned long) __entry->ctx_id,
-		(unsigned long) __entry->int_id,
-		(unsigned long) __entry->ext_id,
-		(unsigned long) __entry->fwaddr,
-		(unsigned long) __entry->value,
-		(unsigned long) __entry->required
-	),
-
+		(unsigned long)__entry->ctx_id,
+		(unsigned long)__entry->int_id,
+		(unsigned long)__entry->ext_id,
+		(unsigned long)__entry->fwaddr,
+		(unsigned long)__entry->value,
+		(unsigned long)__entry->required),
 	PVRGpuTraceEnableUfoCallbackWrapper,
 	PVRGpuTraceDisableUfoCallback
 );
 
 TRACE_EVENT_FN(rogue_ufo_pr_check_fail,
 
-	TP_PROTO(u64 timestamp, u32 gpu_id, u32 ctx_id, u32 int_id, u32 ext_id,
+	TP_PROTO(u64 timestamp, u32 ctx_id, u32 int_id, u32 ext_id,
 	         u32 fwaddr, u32 value, u32 required),
 
-	TP_ARGS(timestamp, gpu_id, ctx_id, int_id, ext_id, fwaddr, value, required),
+	TP_ARGS(timestamp, ctx_id, int_id, ext_id, fwaddr, value, required),
 
 	TP_STRUCT__entry(
 		__field(        u64,            timestamp   )
-		__field(        u32,            gpu_id      )
 		__field(        u32,            ctx_id      )
 		__field(        u32,            int_id      )
 		__field(        u32,            ext_id      )
@@ -395,7 +365,6 @@ TRACE_EVENT_FN(rogue_ufo_pr_check_fail,
 
 	TP_fast_assign(
 		__entry->timestamp = timestamp;
-		__entry->gpu_id = gpu_id;
 		__entry->ctx_id = ctx_id;
 		__entry->int_id = int_id;
 		__entry->ext_id = ext_id;
@@ -404,33 +373,29 @@ TRACE_EVENT_FN(rogue_ufo_pr_check_fail,
 		__entry->required = required;
 	),
 
-	TP_printk("ts=%llu.%06lu gpu=%lu ctx_id=%lu int_id=%lu ext_id=%lu"
+	TP_printk("ts=%llu.%06lu ctx_id=%lu int_id=%lu ext_id=%lu"
 		" fwaddr=%#lx value=%#lx required=%#lx",
 		(unsigned long long)show_secs_from_ns(__entry->timestamp),
 		(unsigned long)show_usecs_from_ns(__entry->timestamp),
-		(unsigned long) __entry->gpu_id,
-		(unsigned long) __entry->ctx_id,
-		(unsigned long) __entry->int_id,
-		(unsigned long) __entry->ext_id,
-		(unsigned long) __entry->fwaddr,
-		(unsigned long) __entry->value,
-		(unsigned long) __entry->required
-	),
-
+		(unsigned long)__entry->ctx_id,
+		(unsigned long)__entry->int_id,
+		(unsigned long)__entry->ext_id,
+		(unsigned long)__entry->fwaddr,
+		(unsigned long)__entry->value,
+		(unsigned long)__entry->required),
 	PVRGpuTraceEnableUfoCallbackWrapper,
 	PVRGpuTraceDisableUfoCallback
 );
 
 TRACE_EVENT_FN(rogue_ufo_check_success,
 
-	TP_PROTO(u64 timestamp, u32 gpu_id, u32 ctx_id, u32 int_id, u32 ext_id,
+	TP_PROTO(u64 timestamp, u32 ctx_id, u32 int_id, u32 ext_id,
 	         u32 fwaddr, u32 value),
 
-	TP_ARGS(timestamp, gpu_id, ctx_id, int_id, ext_id, fwaddr, value),
+	TP_ARGS(timestamp, ctx_id, int_id, ext_id, fwaddr, value),
 
 	TP_STRUCT__entry(
 		__field(        u64,            timestamp   )
-		__field(        u32,            gpu_id      )
 		__field(        u32,            ctx_id      )
 		__field(        u32,            int_id      )
 		__field(        u32,            ext_id      )
@@ -440,7 +405,6 @@ TRACE_EVENT_FN(rogue_ufo_check_success,
 
 	TP_fast_assign(
 		__entry->timestamp = timestamp;
-		__entry->gpu_id = gpu_id;
 		__entry->ctx_id = ctx_id;
 		__entry->int_id = int_id;
 		__entry->ext_id = ext_id;
@@ -448,32 +412,28 @@ TRACE_EVENT_FN(rogue_ufo_check_success,
 		__entry->value = value;
 	),
 
-	TP_printk("ts=%llu.%06lu gpu=%lu ctx_id=%lu int_id=%lu ext_id=%lu"
+	TP_printk("ts=%llu.%06lu ctx_id=%lu int_id=%lu ext_id=%lu"
 		" fwaddr=%#lx value=%#lx",
 		(unsigned long long)show_secs_from_ns(__entry->timestamp),
 		(unsigned long)show_usecs_from_ns(__entry->timestamp),
-		(unsigned long) __entry->gpu_id,
-		(unsigned long) __entry->ctx_id,
-		(unsigned long) __entry->int_id,
-		(unsigned long) __entry->ext_id,
-		(unsigned long) __entry->fwaddr,
-		(unsigned long) __entry->value
-	),
-
+		(unsigned long)__entry->ctx_id,
+		(unsigned long)__entry->int_id,
+		(unsigned long)__entry->ext_id,
+		(unsigned long)__entry->fwaddr,
+		(unsigned long)__entry->value),
 	PVRGpuTraceEnableUfoCallbackWrapper,
 	PVRGpuTraceDisableUfoCallback
 );
 
 TRACE_EVENT_FN(rogue_ufo_pr_check_success,
 
-	TP_PROTO(u64 timestamp, u32 gpu_id, u32 ctx_id, u32 int_id, u32 ext_id,
+	TP_PROTO(u64 timestamp, u32 ctx_id, u32 int_id, u32 ext_id,
 	         u32 fwaddr, u32 value),
 
-	TP_ARGS(timestamp, gpu_id, ctx_id, int_id, ext_id, fwaddr, value),
+	TP_ARGS(timestamp, ctx_id, int_id, ext_id, fwaddr, value),
 
 	TP_STRUCT__entry(
 		__field(        u64,            timestamp   )
-		__field(        u32,            gpu_id      )
 		__field(        u32,            ctx_id      )
 		__field(        u32,            int_id      )
 		__field(        u32,            ext_id      )
@@ -483,7 +443,6 @@ TRACE_EVENT_FN(rogue_ufo_pr_check_success,
 
 	TP_fast_assign(
 		__entry->timestamp = timestamp;
-		__entry->gpu_id = gpu_id;
 		__entry->ctx_id = ctx_id;
 		__entry->int_id = int_id;
 		__entry->ext_id = ext_id;
@@ -491,45 +450,39 @@ TRACE_EVENT_FN(rogue_ufo_pr_check_success,
 		__entry->value = value;
 	),
 
-	TP_printk("ts=%llu.%06lu gpu=%lu ctx_id=%lu int_id=%lu ext_id=%lu"
+	TP_printk("ts=%llu.%06lu ctx_id=%lu int_id=%lu ext_id=%lu"
 		" fwaddr=%#lx value=%#lx",
 		(unsigned long long)show_secs_from_ns(__entry->timestamp),
 		(unsigned long)show_usecs_from_ns(__entry->timestamp),
-		(unsigned long) __entry->gpu_id,
-		(unsigned long) __entry->ctx_id,
-		(unsigned long) __entry->int_id,
-		(unsigned long) __entry->ext_id,
-		(unsigned long) __entry->fwaddr,
-		(unsigned long) __entry->value
-	),
-
+		(unsigned long)__entry->ctx_id,
+		(unsigned long)__entry->int_id,
+		(unsigned long)__entry->ext_id,
+		(unsigned long)__entry->fwaddr,
+		(unsigned long)__entry->value),
 	PVRGpuTraceEnableUfoCallbackWrapper,
 	PVRGpuTraceDisableUfoCallback
 );
 
 TRACE_EVENT(rogue_events_lost,
 
-	TP_PROTO(u32 event_source, u32 gpu_id, u32 last_ordinal, u32 curr_ordinal),
+	TP_PROTO(u32 event_source, u32 last_ordinal, u32 curr_ordinal),
 
-	TP_ARGS(event_source, gpu_id, last_ordinal, curr_ordinal),
+	TP_ARGS(event_source, last_ordinal, curr_ordinal),
 
 	TP_STRUCT__entry(
 		__field(        u32,            event_source     )
-		__field(        u32,            gpu_id           )
 		__field(        u32,            last_ordinal     )
 		__field(        u32,            curr_ordinal     )
 	),
 
 	TP_fast_assign(
 		__entry->event_source = event_source;
-		__entry->gpu_id = gpu_id;
 		__entry->last_ordinal = last_ordinal;
 		__entry->curr_ordinal = curr_ordinal;
 	),
 
-	TP_printk("event_source=%s gpu=%u last_ordinal=%u curr_ordinal=%u",
+	TP_printk("event_source=%s last_ordinal=%u curr_ordinal=%u",
 		__print_symbolic(__entry->event_source, {0, "GPU"}, {1, "Host"}),
-		__entry->gpu_id,
 		__entry->last_ordinal,
 		__entry->curr_ordinal)
 );
@@ -545,28 +498,25 @@ int PVRGpuTraceEnableFirmwareActivityCallbackWrapper(void);
 
 TRACE_EVENT_FN(rogue_firmware_activity,
 
-	TP_PROTO(u64 timestamp, u32 gpu_id, const char *task, u32 fw_event),
+	TP_PROTO(u64 timestamp, const char *task, u32 fw_event),
 
-	TP_ARGS(timestamp, gpu_id, task, fw_event),
+	TP_ARGS(timestamp, task, fw_event),
 
 	TP_STRUCT__entry(
 		__field(        u64,            timestamp       )
-		__field(        u32,            gpu_id             )
 		__string(       task,           task            )
 		__field(        u32,            fw_event        )
 	),
 
 	TP_fast_assign(
 		__entry->timestamp = timestamp;
-		__entry->gpu_id = gpu_id,
 		__assign_str(task, task);
 		__entry->fw_event = fw_event;
 	),
 
-	TP_printk("ts=%llu.%06lu gpu=%lu task=%s event=%s",
-		(unsigned long long) show_secs_from_ns(__entry->timestamp),
-		(unsigned long) show_usecs_from_ns(__entry->timestamp),
-		(unsigned long) __entry->gpu_id,
+	TP_printk("ts=%llu.%06lu task=%s event=%s",
+		(unsigned long long)show_secs_from_ns(__entry->timestamp),
+		(unsigned long)show_usecs_from_ns(__entry->timestamp),
 		__get_str(task),
 		__print_symbolic(__entry->fw_event,
 			/* These values are from ospvr_gputrace.h. */

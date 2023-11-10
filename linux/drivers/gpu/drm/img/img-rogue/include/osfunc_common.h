@@ -156,7 +156,7 @@ size_t StringLCopy(IMG_CHAR *pszDest, const IMG_CHAR *pszSrc, size_t uDataSize);
  */ /**************************************************************************/
 #define OSDeviceMemSet(a,b,c) \
 	do { \
-		if ((c) != 0U) \
+		if ((c) != 0) \
 		{ \
 			(void) memset((a), (b), (c)); \
 			(void) *(volatile IMG_UINT32*)((void*)(a)); \
@@ -176,7 +176,7 @@ size_t StringLCopy(IMG_CHAR *pszDest, const IMG_CHAR *pszSrc, size_t uDataSize);
  */ /**************************************************************************/
 #define OSDeviceMemCopy(a,b,c) \
 	do { \
-		if ((c) != 0U) \
+		if ((c) != 0) \
 		{ \
 			memcpy((a), (b), (c)); \
 			(void) *(volatile IMG_UINT32*)((void*)(a)); \
@@ -224,14 +224,22 @@ size_t StringLCopy(IMG_CHAR *pszDest, const IMG_CHAR *pszSrc, size_t uDataSize);
 @Input          c     the number of bytes to be set to the given value
 @Return         Pointer to the destination memory.
  */ /**************************************************************************/
+#if !defined(SERVICES_SC)
 #define OSCachedMemSetWMB(a,b,c) \
 	do { \
-		if ((c) != 0U) \
+		if ((c) != 0) \
 		{ \
 			(void) memset((a), (b), (c)); \
 			OSWriteMemoryBarrier(a); \
 		} \
 	} while (false)
+#else
+#define OSCachedMemSetWMB(a,b,c) \
+	do { \
+		(void) memset((a), (b), (c)); \
+		OSWriteMemoryBarrier(); \
+	} while (false)
+#endif /* !defined(SERVICES_SC) */
 /**************************************************************************/ /*!
 @Function       OSCachedMemCopy
 @Description    Copy values from one area of memory, to another, when both
@@ -244,14 +252,22 @@ size_t StringLCopy(IMG_CHAR *pszDest, const IMG_CHAR *pszSrc, size_t uDataSize);
 @Input          c     the number of bytes to be copied
 @Return         Pointer to the destination memory.
  */ /**************************************************************************/
+#if !defined(SERVICES_SC)
 #define OSCachedMemCopyWMB(a,b,c) \
 	do { \
-		if ((c) != 0U) \
+		if ((c) != 0) \
 		{ \
 			(void) memcpy((a), (b), (c)); \
 			OSWriteMemoryBarrier(a); \
 		} \
 	} while (false)
+#else
+#define OSCachedMemCopyWMB(a,b,c) \
+	do { \
+		(void) memcpy((a), (b), (c)); \
+		OSWriteMemoryBarrier(); \
+	} while (false)
+#endif /* !defined(SERVICES_SC) */
 #endif /* defined(__KERNEL__) */
 
 /**************************************************************************/ /*!

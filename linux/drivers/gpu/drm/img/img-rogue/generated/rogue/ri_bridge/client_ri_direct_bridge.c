@@ -99,10 +99,10 @@ IMG_INTERNAL PVRSRV_ERROR BridgeRIWriteProcListEntry(IMG_HANDLE hBridge,
 {
 	PVRSRV_ERROR eError;
 	RI_HANDLE psRIHandleInt = NULL;
+	PVR_UNREFERENCED_PARAMETER(hBridge);
 
 	eError =
-	    RIWriteProcListEntryKM(NULL, (PVRSRV_DEVICE_NODE *) ((void *)hBridge),
-				   ui32TextBSize, puiTextB, ui64Size, ui64DevVAddr, &psRIHandleInt);
+	    RIWriteProcListEntryKM(ui32TextBSize, puiTextB, ui64Size, ui64DevVAddr, &psRIHandleInt);
 
 	*phRIHandle = psRIHandleInt;
 	return eError;

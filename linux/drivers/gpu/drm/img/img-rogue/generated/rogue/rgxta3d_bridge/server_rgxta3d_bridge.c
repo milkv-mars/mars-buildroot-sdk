@@ -86,8 +86,6 @@ static_assert(RGXMKIF_NUM_RTDATAS <= IMG_UINT32_MAX,
 	      "RGXMKIF_NUM_RTDATAS must not be larger than IMG_UINT32_MAX");
 static_assert(RGXMKIF_NUM_GEOMDATAS <= IMG_UINT32_MAX,
 	      "RGXMKIF_NUM_GEOMDATAS must not be larger than IMG_UINT32_MAX");
-static_assert(RGXMKIF_NUM_RTDATAS <= IMG_UINT32_MAX,
-	      "RGXMKIF_NUM_RTDATAS must not be larger than IMG_UINT32_MAX");
 
 static IMG_INT
 PVRSRVBridgeRGXCreateHWRTDataSet(IMG_UINT32 ui32DispatchTableEntry,
@@ -115,7 +113,9 @@ PVRSRVBridgeRGXCreateHWRTDataSet(IMG_UINT32 ui32DispatchTableEntry,
 
 	IMG_UINT32 ui32NextOffset = 0;
 	IMG_BYTE *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
 	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
 
 	IMG_UINT32 ui32BufferSize = 0;
 	IMG_UINT64 ui64BufferSize =
@@ -142,6 +142,7 @@ PVRSRVBridgeRGXCreateHWRTDataSet(IMG_UINT32 ui32DispatchTableEntry,
 
 	if (ui32BufferSize != 0)
 	{
+#if !defined(INTEGRITY_OS)
 		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
 		IMG_UINT32 ui32InBufferOffset =
 		    PVR_ALIGN(sizeof(*psRGXCreateHWRTDataSetIN), sizeof(unsigned long));
@@ -157,6 +158,7 @@ PVRSRVBridgeRGXCreateHWRTDataSet(IMG_UINT32 ui32DispatchTableEntry,
 			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];
 		}
 		else
+#endif
 		{
 			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
 
@@ -438,7 +440,7 @@ RGXCreateHWRTDataSet_exit:
 		{
 
 			/* Unreference the previously looked up handle */
-			if (psapsFreeListsInt && psapsFreeListsInt[i])
+			if (psapsFreeListsInt[i])
 			{
 				PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
 							    hapsFreeListsInt2[i],
@@ -473,7 +475,11 @@ RGXCreateHWRTDataSet_exit:
 		PVR_ASSERT(ui32BufferSize == ui32NextOffset);
 #endif /* PVRSRV_NEED_PVR_ASSERT */
 
+#if defined(INTEGRITY_OS)
+	if (pArrayArgsBuffer)
+#else
 	if (!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
 		OSFreeMemNoStats(pArrayArgsBuffer);
 
 	return 0;
@@ -1028,7 +1034,9 @@ PVRSRVBridgeRGXCreateRenderContext(IMG_UINT32 ui32DispatchTableEntry,
 
 	IMG_UINT32 ui32NextOffset = 0;
 	IMG_BYTE *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
 	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
 
 	IMG_UINT32 ui32BufferSize = 0;
 	IMG_UINT64 ui64BufferSize =
@@ -1060,6 +1068,7 @@ PVRSRVBridgeRGXCreateRenderContext(IMG_UINT32 ui32DispatchTableEntry,
 
 	if (ui32BufferSize != 0)
 	{
+#if !defined(INTEGRITY_OS)
 		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
 		IMG_UINT32 ui32InBufferOffset =
 		    PVR_ALIGN(sizeof(*psRGXCreateRenderContextIN), sizeof(unsigned long));
@@ -1075,6 +1084,7 @@ PVRSRVBridgeRGXCreateRenderContext(IMG_UINT32 ui32DispatchTableEntry,
 			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];
 		}
 		else
+#endif
 		{
 			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
 
@@ -1148,7 +1158,7 @@ PVRSRVBridgeRGXCreateRenderContext(IMG_UINT32 ui32DispatchTableEntry,
 
 	psRGXCreateRenderContextOUT->eError =
 	    PVRSRVRGXCreateRenderContextKM(psConnection, OSGetDevNode(psConnection),
-					   psRGXCreateRenderContextIN->i32Priority,
+					   psRGXCreateRenderContextIN->ui32Priority,
 					   psRGXCreateRenderContextIN->sVDMCallStackAddr,
 					   psRGXCreateRenderContextIN->ui32ui32CallStackDepth,
 					   psRGXCreateRenderContextIN->ui32FrameworkCmdSize,
@@ -1217,7 +1227,11 @@ RGXCreateRenderContext_exit:
 		PVR_ASSERT(ui32BufferSize == ui32NextOffset);
 #endif /* PVRSRV_NEED_PVR_ASSERT */
 
+#if defined(INTEGRITY_OS)
+	if (pArrayArgsBuffer)
+#else
 	if (!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
 		OSFreeMemNoStats(pArrayArgsBuffer);
 
 	return 0;
@@ -1300,7 +1314,7 @@ PVRSRVBridgeRGXSetRenderContextPriority(IMG_UINT32 ui32DispatchTableEntry,
 	psRGXSetRenderContextPriorityOUT->eError =
 	    PVRSRVRGXSetRenderContextPriorityKM(psConnection, OSGetDevNode(psConnection),
 						psRenderContextInt,
-						psRGXSetRenderContextPriorityIN->i32Priority);
+						psRGXSetRenderContextPriorityIN->ui32Priority);
 
 RGXSetRenderContextPriority_exit:
 
@@ -1435,7 +1449,9 @@ PVRSRVBridgeRGXKickTA3D2(IMG_UINT32 ui32DispatchTableEntry,
 
 	IMG_UINT32 ui32NextOffset = 0;
 	IMG_BYTE *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
 	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
 
 	IMG_UINT32 ui32BufferSize = 0;
 	IMG_UINT64 ui64BufferSize =
@@ -1515,6 +1531,7 @@ PVRSRVBridgeRGXKickTA3D2(IMG_UINT32 ui32DispatchTableEntry,
 
 	if (ui32BufferSize != 0)
 	{
+#if !defined(INTEGRITY_OS)
 		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
 		IMG_UINT32 ui32InBufferOffset =
 		    PVR_ALIGN(sizeof(*psRGXKickTA3D2IN), sizeof(unsigned long));
@@ -1530,6 +1547,7 @@ PVRSRVBridgeRGXKickTA3D2(IMG_UINT32 ui32DispatchTableEntry,
 			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];
 		}
 		else
+#endif
 		{
 			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
 
@@ -2107,7 +2125,7 @@ RGXKickTA3D2_exit:
 		{
 
 			/* Unreference the previously looked up handle */
-			if (psClientTAFenceSyncPrimBlockInt && psClientTAFenceSyncPrimBlockInt[i])
+			if (psClientTAFenceSyncPrimBlockInt[i])
 			{
 				PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
 							    hClientTAFenceSyncPrimBlockInt2[i],
@@ -2124,7 +2142,7 @@ RGXKickTA3D2_exit:
 		{
 
 			/* Unreference the previously looked up handle */
-			if (psClientTAUpdateSyncPrimBlockInt && psClientTAUpdateSyncPrimBlockInt[i])
+			if (psClientTAUpdateSyncPrimBlockInt[i])
 			{
 				PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
 							    hClientTAUpdateSyncPrimBlockInt2[i],
@@ -2141,7 +2159,7 @@ RGXKickTA3D2_exit:
 		{
 
 			/* Unreference the previously looked up handle */
-			if (psClient3DUpdateSyncPrimBlockInt && psClient3DUpdateSyncPrimBlockInt[i])
+			if (psClient3DUpdateSyncPrimBlockInt[i])
 			{
 				PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
 							    hClient3DUpdateSyncPrimBlockInt2[i],
@@ -2202,7 +2220,7 @@ RGXKickTA3D2_exit:
 		{
 
 			/* Unreference the previously looked up handle */
-			if (psSyncPMRsInt && psSyncPMRsInt[i])
+			if (psSyncPMRsInt[i])
 			{
 				PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
 							    hSyncPMRsInt2[i],
@@ -2219,7 +2237,11 @@ RGXKickTA3D2_exit:
 		PVR_ASSERT(ui32BufferSize == ui32NextOffset);
 #endif /* PVRSRV_NEED_PVR_ASSERT */
 
+#if defined(INTEGRITY_OS)
+	if (pArrayArgsBuffer)
+#else
 	if (!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
 		OSFreeMemNoStats(pArrayArgsBuffer);
 
 	return 0;

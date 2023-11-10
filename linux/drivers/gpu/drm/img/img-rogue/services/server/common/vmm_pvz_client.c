@@ -79,15 +79,18 @@ PvzClientMapDevPhysHeap(PVRSRV_DEVICE_CONFIG *psDevConfig)
 	PVRSRV_ERROR eError;
 	IMG_DEV_PHYADDR sDevPAddr;
 	VMM_PVZ_CONNECTION *psVmmPvz;
-	PHYS_HEAP *psFwPhysHeap = psDevConfig->psDevNode->apsPhysHeap[FIRST_PHYSHEAP_MAPPED_TO_FW_MAIN_DEVMEM];
+	IMG_UINT32 uiFuncID = PVZ_BRIDGE_MAPDEVICEPHYSHEAP;
+	PHYS_HEAP *psFwPhysHeap = psDevConfig->psDevNode->apsPhysHeap[PVRSRV_PHYS_HEAP_FW_MAIN];
 
 	eError = PhysHeapGetDevPAddr(psFwPhysHeap, &sDevPAddr);
 
 #if defined(PVR_PMR_TRANSLATE_UMA_ADDRESSES)
 {
+	/* Host expects PA rather than IPA address, so on the platforms where
+	 * IPA-PA translation is not done in hw, performs a software translation */
+
 	IMG_DEV_PHYADDR sDevPAddrTranslated;
 
-	/* If required, perform a software translation between CPU and Device physical addresses. */
 	PhysHeapCpuPAddrToDevPAddr(psFwPhysHeap, 1, &sDevPAddrTranslated, (IMG_CPU_PHYADDR *)&sDevPAddr);
 	sDevPAddr.uiAddr = sDevPAddrTranslated.uiAddr;
 }
@@ -99,7 +102,10 @@ PvzClientMapDevPhysHeap(PVRSRV_DEVICE_CONFIG *psDevConfig)
 	psVmmPvz = PvzConnectionAcquire();
 	PvzClientLockAcquire();
 
-	eError = psVmmPvz->sClientFuncTab.pfnMapDevPhysHeap(RGX_FIRMWARE_RAW_HEAP_SIZE, sDevPAddr.uiAddr);
+	eError = psVmmPvz->sClientFuncTab.pfnMapDevPhysHeap(uiFuncID,
+													    0,
+													    RGX_FIRMWARE_RAW_HEAP_SIZE,
+													    sDevPAddr.uiAddr);
 
 	PvzClientLockRelease();
 	PvzConnectionRelease(psVmmPvz);
@@ -111,6 +117,7 @@ PVRSRV_ERROR
 PvzClientUnmapDevPhysHeap(PVRSRV_DEVICE_CONFIG *psDevConfig)
 {
 	PVRSRV_ERROR eError;
+	IMG_UINT32 uiFuncID = PVZ_BRIDGE_UNMAPDEVICEPHYSHEAP;
 	VMM_PVZ_CONNECTION *psVmmPvz = PvzConnectionAcquire();
 	PVR_ASSERT(psVmmPvz);
 
@@ -118,7 +125,7 @@ PvzClientUnmapDevPhysHeap(PVRSRV_DEVICE_CONFIG *psDevConfig)
 
 	PVR_ASSERT(psVmmPvz->sClientFuncTab.pfnUnmapDevPhysHeap);
 
-	eError = psVmmPvz->sClientFuncTab.pfnUnmapDevPhysHeap();
+	eError = psVmmPvz->sClientFuncTab.pfnUnmapDevPhysHeap(uiFuncID, 0);
 
 	PvzClientLockRelease();
 	PvzConnectionRelease(psVmmPvz);

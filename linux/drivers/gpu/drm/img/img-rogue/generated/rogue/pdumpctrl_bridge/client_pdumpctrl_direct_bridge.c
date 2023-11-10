@@ -74,17 +74,14 @@ IMG_INTERNAL PVRSRV_ERROR BridgePVRSRVPDumpSetDefaultCaptureParams(IMG_HANDLE hB
 								   IMG_UINT32 ui32Start,
 								   IMG_UINT32 ui32End,
 								   IMG_UINT32 ui32Interval,
-								   IMG_UINT32 ui32MaxParamFileSize,
-								   IMG_UINT32 ui32AutoTermTimeout)
+								   IMG_UINT32 ui32MaxParamFileSize)
 {
 	PVRSRV_ERROR eError;
 
 	eError =
 	    PDumpSetDefaultCaptureParamsKM(NULL, (PVRSRV_DEVICE_NODE *) ((void *)hBridge),
 					   ui32Mode,
-					   ui32Start,
-					   ui32End,
-					   ui32Interval, ui32MaxParamFileSize, ui32AutoTermTimeout);
+					   ui32Start, ui32End, ui32Interval, ui32MaxParamFileSize);
 
 	return eError;
 }

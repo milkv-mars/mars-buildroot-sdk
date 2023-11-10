@@ -144,12 +144,6 @@ typedef struct
 	IMG_CHAR               szZeroPageFilename[PDUMP_PARAM_MAX_FILE_NAME]; /*< PRM file name where the zero page was pdumped */
 } PDUMP_PARAMETERS;
 
-/* PDump global connection count - used to determine when/if the last
- * connection (from a PDump generating app) has been closed.
- * This is used to key the AUTO_TERMINATED behaviour if enabled.
- */
-static ATOMIC_T gPDumpNumConnex;
-
 /* PDump lock to keep pdump write atomic.
  * Which will protect g_PDumpScript & g_PDumpParameters pdump
  * specific shared variable.
@@ -255,7 +249,6 @@ typedef enum _PDUMP_SM_
 #define FLAG_IS_DRIVER_IN_INIT_PHASE 0x1  /*! Control flag that keeps track of State of driver initialisation phase */
 #define FLAG_IS_IN_CAPTURE_RANGE     0x2  /*! Control flag that keeps track of Current capture status, is current frame in range */
 #define FLAG_IS_IN_CAPTURE_INTERVAL  0x4  /*! Control flag that keeps track of Current capture status, is current frame in an interval where no capture takes place. */
-#define FLAG_IS_AUTO_TERMINATED      0x8  /*! Control flag that indicates app has auto-terminated. */
 
 #define CHECK_PDUMP_CONTROL_FLAG(PDUMP_CONTROL_FLAG) BITMASK_HAS(g_PDumpCtrl.ui32Flags, PDUMP_CONTROL_FLAG)
 #define SET_PDUMP_CONTROL_FLAG(PDUMP_CONTROL_FLAG)   BITMASK_SET(g_PDumpCtrl.ui32Flags, PDUMP_CONTROL_FLAG)
@@ -275,7 +268,6 @@ typedef struct _PDUMP_CTRL_STATE_
 
 	POS_LOCK            hLock;              /*!< Exclusive lock to this structure */
 	IMG_PID             InPowerTransitionPID;/*!< pid of thread requesting power transition */
-	IMG_UINT32          ui32TimeoutFrequency;/*!< Timer frequency for checking process existence */
 } PDUMP_CTRL_STATE;
 
 static PDUMP_CTRL_STATE g_PDumpCtrl =
@@ -298,11 +290,8 @@ static PDUMP_CTRL_STATE g_PDumpCtrl =
 	},
 
 	NULL,
-	0,
 	0
 };
-
-static IMG_HANDLE g_PDumpTimerID;
 
 static void PDumpAssertWriteLockHeld(void);
 
@@ -393,12 +382,6 @@ static INLINE void PDumpCtrlLockRelease(void)
 static INLINE PDUMP_SM PDumpCtrlGetModuleState(void)
 {
 	return g_PDumpCtrl.eServiceState;
-}
-
-PVRSRV_ERROR PDumpValidateUMFlags(PDUMP_FLAGS_T uiFlags)
-{
-	/* If these flags are or'd together, they are invalid */
-	return ((uiFlags & (~(PDUMP_BLKDATA | PDUMP_CONT))) != 0) ? PVRSRV_ERROR_INVALID_PARAMS : PVRSRV_OK;
 }
 
 PVRSRV_ERROR PDumpReady(void)
@@ -537,7 +520,7 @@ static void PDumpCtrlSetCurrentFrame(IMG_UINT32 ui32Frame)
 #endif
 }
 
-static void PDumpCtrlSetDefaultCaptureParams(IMG_UINT32 ui32Mode, IMG_UINT32 ui32Start, IMG_UINT32 ui32End, IMG_UINT32 ui32Interval, IMG_UINT32 ui32AutoTermTimeout)
+static void PDumpCtrlSetDefaultCaptureParams(IMG_UINT32 ui32Mode, IMG_UINT32 ui32Start, IMG_UINT32 ui32End, IMG_UINT32 ui32Interval)
 {
 	/* Set the capture range to that supplied by the PDump client tool
 	 */
@@ -545,26 +528,6 @@ static void PDumpCtrlSetDefaultCaptureParams(IMG_UINT32 ui32Mode, IMG_UINT32 ui3
 	g_PDumpCtrl.sCaptureRange.ui32Start = ui32Start;
 	g_PDumpCtrl.sCaptureRange.ui32End = ui32End;
 	g_PDumpCtrl.sCaptureRange.ui32Interval = ui32Interval;
-
-	/* Disable / Enable AUTO_TERMINATE behaviour if AutoTermTimeout is set */
-	if (ui32AutoTermTimeout == 0U)
-	{
-		if (g_PDumpTimerID != NULL)
-		{
-			PVRSRV_ERROR eError;
-
-			eError = OSDisableTimer(g_PDumpTimerID);
-			PVR_LOG_IF_ERROR(eError, "OSDisableTimer");
-
-			/* Now destroy it too */
-			eError = OSRemoveTimer(g_PDumpTimerID);
-			PVR_LOG_IF_ERROR(eError, "OSRemoveTimer");
-
-			g_PDumpTimerID = NULL;
-		}
-		g_PDumpCtrl.ui32TimeoutFrequency = 0U;
-		UNSET_PDUMP_CONTROL_FLAG(FLAG_IS_AUTO_TERMINATED);
-	}
 
 	/* Set pdump block mode ctrl variables */
 	g_PDumpCtrl.sBlockCtrl.ui32BlockLength = (ui32Mode == PDUMP_CAPMODE_BLOCKED)? ui32Interval : 0; /* ui32Interval is interpreted as block length */
@@ -704,40 +667,6 @@ static PVRSRV_ERROR PDumpCtrlGetState(IMG_UINT64 *ui64State)
 		*ui64State |= PDUMP_STATE_SUSPENDED;
 	}
 
-	if (CHECK_PDUMP_CONTROL_FLAG(FLAG_IS_AUTO_TERMINATED))
-	{
-		*ui64State |= PDUMP_STATE_APP_TERMINATED;
-	}
-
-	return PVRSRV_OK;
-}
-
-static PVRSRV_ERROR PDumpSetAutoTerminate(IMG_UINT32 ui32TimeoutFrequency)
-{
-	PVRSRV_ERROR eError;
-	IMG_BOOL bEnable = (ui32TimeoutFrequency != 0U) ? IMG_TRUE : IMG_FALSE;
-
-	eError = PDumpReady();
-	PVR_LOG_RETURN_IF_ERROR(eError, "PDumpReady");
-
-	g_PDumpCtrl.ui32TimeoutFrequency = ui32TimeoutFrequency;
-
-	if (bEnable)
-	{
-		PVR_DPF((PVR_DBG_MESSAGE, "%s: ENABLING Auto Termination - Timeout %u",
-		         __func__, ui32TimeoutFrequency));
-		PDUMP_REFCOUNT_PRINT(("%s: gPDumpNumConnex (%p) = %d", __func__,
-		                      &gPDumpNumConnex, OSAtomicRead(&gPDumpNumConnex)));
-	}
-	else
-	{
-		PVR_DPF((PVR_DBG_MESSAGE, "%s: DISABLING Auto Termination",
-		         __func__));
-		PDUMP_REFCOUNT_PRINT(("%s: gPDumpNumConnex (%p) = %d", __func__,
-		                      &gPDumpNumConnex,
-		                      OSAtomicRead(&gPDumpNumConnex)));
-	}
-
 	return PVRSRV_OK;
 }
 
@@ -847,13 +776,6 @@ IMG_BOOL PDumpIsDevicePermitted(PVRSRV_DEVICE_NODE *psDeviceNode)
 
 	if (psDeviceNode)
 	{
-		if (psDeviceNode->eDevState < PVRSRV_DEVICE_STATE_CREATED)
-		{
-			PVR_DPF((PVR_DBG_FATAL,"%s: PDump output requested for Device %d "
-			         "before device created. Not permitted - please fix driver.",
-			         __func__, psDeviceNode->sDevId.ui32InternalID));
-			return IMG_FALSE;
-		}
 		if ((psDeviceNode->sDevId.ui32InternalID > PVRSRV_MAX_DEVICES) ||
 		    ((psPVRSRVData->ui32PDumpBoundDevice < PVRSRV_MAX_DEVICES) &&
 		     (psDeviceNode->sDevId.ui32InternalID != psPVRSRVData->ui32PDumpBoundDevice)))
@@ -1032,6 +954,7 @@ static IMG_UINT32 PDumpWriteToBuffer(PVRSRV_DEVICE_NODE *psDeviceNode,
 	IMG_UINT32	ui32Off = 0;
 	IMG_BYTE *pbyDataBuffer;
 	IMG_UINT32 ui32BytesAvailable = 0;
+	static IMG_UINT32 ui32TotalBytesWritten;
 	PVRSRV_ERROR eError;
 	IMG_UINT32 uiRetries = 0;
 
@@ -1106,6 +1029,8 @@ static IMG_UINT32 PDumpWriteToBuffer(PVRSRV_DEVICE_NODE *psDeviceNode,
 
 		if (eError == PVRSRV_OK)
 		{
+			ui32TotalBytesWritten += ui32BytesToBeWritten;
+
 			PVR_ASSERT(pbyDataBuffer != NULL);
 
 			OSDeviceMemCopy((void*)pbyDataBuffer, pui8Data + ui32Off, ui32BytesToBeWritten);
@@ -2404,8 +2329,7 @@ PVRSRV_ERROR PDumpSetDefaultCaptureParamsKM(CONNECTION_DATA *psConnection,
                                             IMG_UINT32 ui32Start,
                                             IMG_UINT32 ui32End,
                                             IMG_UINT32 ui32Interval,
-                                            IMG_UINT32 ui32MaxParamFileSize,
-                                            IMG_UINT32 ui32AutoTermTimeout)
+                                            IMG_UINT32 ui32MaxParamFileSize)
 {
 	PVRSRV_ERROR eError;
 
@@ -2451,8 +2375,7 @@ PVRSRV_ERROR PDumpSetDefaultCaptureParamsKM(CONNECTION_DATA *psConnection,
 	   PDumping app may be reading the state data for some checks
 	*/
 	PDumpCtrlLockAcquire();
-	PDumpCtrlSetDefaultCaptureParams(ui32Mode, ui32Start, ui32End, ui32Interval, ui32AutoTermTimeout);
-	PDumpSetAutoTerminate(ui32AutoTermTimeout);
+	PDumpCtrlSetDefaultCaptureParams(ui32Mode, ui32Start, ui32End, ui32Interval);
 	PDumpCtrlLockRelease();
 
 	if (ui32MaxParamFileSize == 0)
@@ -4211,7 +4134,7 @@ PVRSRV_ERROR PDumpImageDescriptor(PVRSRV_DEVICE_NODE *psDeviceNode,
 		 * The render data may be corrupted, so write out the raw
 		 * image buffer to avoid errors in the post-processing tools.
 		 */
-		bRawImageData |= (psDevInfo->ui32ValidationFlags & RGX_VAL_FBDC_SIG_CHECK_ERR_EN);
+		bRawImageData |= (psDevInfo->ui32ValidationFlags & RGX_VAL_SIG_CHECK_ERR_EN);
 	}
 #endif
 
@@ -5239,7 +5162,7 @@ void PDumpDisconnectionNotify(PVRSRV_DEVICE_NODE *psDeviceNode)
 		 * Will set module state back to READY.
 		 */
 		eErr = PDumpSetDefaultCaptureParamsKM(NULL, psDeviceNode, PDUMP_CAPMODE_UNSET,
-						      PDUMP_FRAME_UNSET, PDUMP_FRAME_UNSET, 0, 0, 0);
+						      PDUMP_FRAME_UNSET, PDUMP_FRAME_UNSET, 0, 0);
 		PVR_LOG_IF_ERROR(eErr, "PDumpSetDefaultCaptureParamsKM");
 	}
 }
@@ -5555,10 +5478,8 @@ void PDumpCommonDumpState(void)
 }
 #endif /* defined(PDUMP_TRACE_STATE) || defined(PVR_TESTING_UTILS) */
 
-static void PDumpStartTimer(PVRSRV_DEVICE_NODE *psDeviceNode);
 
-PVRSRV_ERROR PDumpRegisterConnection(PVRSRV_DEVICE_NODE *psDeviceNode,
-                                     void *hSyncPrivData,
+PVRSRV_ERROR PDumpRegisterConnection(void *hSyncPrivData,
                                      PFN_PDUMP_SYNCBLOCKS pfnPDumpSyncBlocks,
                                      PDUMP_CONNECTION_DATA **ppsPDumpConnectionData)
 {
@@ -5592,26 +5513,6 @@ PVRSRV_ERROR PDumpRegisterConnection(PVRSRV_DEVICE_NODE *psDeviceNode,
 
 	*ppsPDumpConnectionData = psPDumpConnectionData;
 
-	if (PDumpIsDevicePermitted(psDeviceNode))
-	{
-		IMG_INT iRefCount;
-
-		/* Add this new reference to the global count of active connections */
-		iRefCount = OSAtomicIncrement(&gPDumpNumConnex);
-		PDUMP_REFCOUNT_PRINT("%s: gPDumpNumConnex (%p) = %d", __func__,
-		                     &gPDumpNumConnex, iRefCount);
-
-		if (((iRefCount > 1) &&
-			(g_PDumpCtrl.ui32TimeoutFrequency != 0U)) &&
-			(g_PDumpTimerID == NULL))
-		{
-			PVR_DPF((PVR_DBG_MESSAGE,
-			         "%s: Starting Timeout Chain now, refcnt = %d",
-			         __func__, iRefCount));
-			PDumpStartTimer(psDeviceNode);
-		}
-	}
-
 	return PVRSRV_OK;
 
 fail_lockcreate:
@@ -5621,21 +5522,9 @@ fail_alloc:
 	return eError;
 }
 
-void PDumpUnregisterConnection(PVRSRV_DEVICE_NODE *psDeviceNode,
-                               PDUMP_CONNECTION_DATA *psPDumpConnectionData)
+void PDumpUnregisterConnection(PDUMP_CONNECTION_DATA *psPDumpConnectionData)
 {
-	IMG_INT iRefCount;
-
 	_PDumpConnectionRelease(psPDumpConnectionData);
-	if (PDumpIsDevicePermitted(psDeviceNode))
-	{
-		/* Remove this connection from the global count */
-		iRefCount = OSAtomicDecrement(&gPDumpNumConnex);
-		PDUMP_REFCOUNT_PRINT("%s: gPDumpNumConnex (%p) = %d", __func__,
-		                     &gPDumpNumConnex, iRefCount);
-		PVR_ASSERT(iRefCount >= 0);
-	}
-	PVR_UNREFERENCED_PARAMETER(iRefCount);
 }
 
 
@@ -5669,78 +5558,6 @@ PVRSRV_ERROR PDumpSNPrintf(IMG_HANDLE hBuf, IMG_UINT32 ui32ScriptSizeMax, IMG_CH
 	_PDumpVerifyLineEnding(pszBuf, ui32ScriptSizeMax);
 
 	return PVRSRV_OK;
-}
-
-void PDumpTimerCB(void *pvData);
-void PDumpTimerCB(void *pvData)
-{
-	IMG_INT iRefCount;
-
-	PVR_UNREFERENCED_PARAMETER(pvData);
-
-	if (CHECK_PDUMP_CONTROL_FLAG(FLAG_IS_AUTO_TERMINATED))
-	{
-		PVR_DPF((PVR_DBG_MESSAGE, "%s: Already flagged as TERMINATED",
-		         __func__));
-	}
-
-	/* Simply check to see if the global connection count indicates that all
-	 * subsequent applications requiring PDump logging have terminated.
-	 * In a quiescent state we will have a singleton pdump utility still
-	 * connected.
-	 */
-	if ((iRefCount = OSAtomicRead(&gPDumpNumConnex)) == 1)
-	{
-		PVR_DPF((PVR_DBG_MESSAGE, "%s: No connections active (%d), flagging as AUTO_TERMINATED",
-		         __func__, iRefCount));
-		SET_PDUMP_CONTROL_FLAG(FLAG_IS_AUTO_TERMINATED);
-	}
-}
-
-/*
- * FunctionName  PDumpStartTimer
- * Description   Start an OSTimer chain running to scan for active connections
- *               being present in the connections associated with the given
- *               psDeviceNode. Only started if we have AutoTerminate flagged
- *               in the internal PDump state.
- * Inputs        psDeviceNode   associated device node to scan for connections
- * Returns       nothing
- */
-static void PDumpStartTimer(PVRSRV_DEVICE_NODE *psDeviceNode)
-{
-	PVRSRV_ERROR eError;
-
-	if (!PDumpIsDevicePermitted(psDeviceNode))
-	{
-		PVR_DPF((PVR_DBG_MESSAGE, "%s: DeviceID %u not valid", __func__,
-		         psDeviceNode->sDevId.ui32InternalID));
-		return;
-	}
-
-	if (g_PDumpCtrl.ui32TimeoutFrequency == 0U)
-	{
-		return;
-	}
-
-	if (g_PDumpTimerID != NULL)
-	{
-		eError = OSDisableTimer(g_PDumpTimerID);
-		PVR_LOG_RETURN_VOID_IF_ERROR(eError, "OSDisableTimer");
-		eError = OSRemoveTimer(g_PDumpTimerID);
-		PVR_LOG_RETURN_VOID_IF_ERROR(eError, "OSRemoveTimer");
-	}
-
-	g_PDumpTimerID = OSAddTimer(PDumpTimerCB, NULL, g_PDumpCtrl.ui32TimeoutFrequency * 1000U);
-
-	if (g_PDumpTimerID != NULL)
-	{
-		eError = OSEnableTimer(g_PDumpTimerID);
-
-		PVR_LOG_RETURN_VOID_IF_ERROR(eError, "OSEnableTimer");
-
-		PVR_DPF((PVR_DBG_MESSAGE, "%s: Timer %p now active.", __func__,
-		         g_PDumpTimerID));
-	}
 }
 
 #endif /* defined(PDUMP) */

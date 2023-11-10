@@ -41,11 +41,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 #include <linux/version.h>
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
- #include <linux/dma-map-ops.h>
-#else
- #include <linux/dma-mapping.h>
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) */
+#include <linux/dma-mapping.h>
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3,15,0))
  #include <asm/system.h>
 #endif

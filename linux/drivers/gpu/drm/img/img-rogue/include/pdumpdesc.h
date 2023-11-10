@@ -67,12 +67,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 /*
- * Header type (IMGBv3) - 'IMGB' in hex + VERSION 3
+ * Header type (IMGBv2) - 'IMGB' in hex + VERSION 2
  * Header size - 64 bytes
  */
 #define IMAGE_HEADER_TYPE					(0x42474D49)
 #define IMAGE_HEADER_SIZE					(64)
-#define IMAGE_HEADER_VERSION				(3)
+#define IMAGE_HEADER_VERSION				(2)
 
 /*
  * Image type-specific fields

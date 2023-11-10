@@ -61,8 +61,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <linux/slab.h>
 
-#if defined(SUPPORT_RGXKICKSYNC_BRIDGE)
-
 /* ***************************************************************************
  * Server-side bridge entry points
  */
@@ -230,7 +228,9 @@ PVRSRVBridgeRGXKickSync2(IMG_UINT32 ui32DispatchTableEntry,
 
 	IMG_UINT32 ui32NextOffset = 0;
 	IMG_BYTE *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
 	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
 
 	IMG_UINT32 ui32BufferSize = 0;
 	IMG_UINT64 ui64BufferSize =
@@ -257,6 +257,7 @@ PVRSRVBridgeRGXKickSync2(IMG_UINT32 ui32DispatchTableEntry,
 
 	if (ui32BufferSize != 0)
 	{
+#if !defined(INTEGRITY_OS)
 		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
 		IMG_UINT32 ui32InBufferOffset =
 		    PVR_ALIGN(sizeof(*psRGXKickSync2IN), sizeof(unsigned long));
@@ -272,6 +273,7 @@ PVRSRVBridgeRGXKickSync2(IMG_UINT32 ui32DispatchTableEntry,
 			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];
 		}
 		else
+#endif
 		{
 			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
 
@@ -442,7 +444,7 @@ RGXKickSync2_exit:
 		{
 
 			/* Unreference the previously looked up handle */
-			if (psUpdateUFODevVarBlockInt && psUpdateUFODevVarBlockInt[i])
+			if (psUpdateUFODevVarBlockInt[i])
 			{
 				PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
 							    hUpdateUFODevVarBlockInt2[i],
@@ -459,7 +461,11 @@ RGXKickSync2_exit:
 		PVR_ASSERT(ui32BufferSize == ui32NextOffset);
 #endif /* PVRSRV_NEED_PVR_ASSERT */
 
+#if defined(INTEGRITY_OS)
+	if (pArrayArgsBuffer)
+#else
 	if (!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
 		OSFreeMemNoStats(pArrayArgsBuffer);
 
 	return 0;
@@ -526,9 +532,6 @@ RGXSetKickSyncContextProperty_exit:
  * Server bridge dispatch related glue
  */
 
-#endif /* SUPPORT_RGXKICKSYNC_BRIDGE */
-
-#if defined(SUPPORT_RGXKICKSYNC_BRIDGE)
 PVRSRV_ERROR InitRGXKICKSYNCBridge(void);
 void DeinitRGXKICKSYNCBridge(void);
 
@@ -574,13 +577,3 @@ void DeinitRGXKICKSYNCBridge(void)
 				PVRSRV_BRIDGE_RGXKICKSYNC_RGXSETKICKSYNCCONTEXTPROPERTY);
 
 }
-#else /* SUPPORT_RGXKICKSYNC_BRIDGE */
-/* This bridge is conditional on SUPPORT_RGXKICKSYNC_BRIDGE - when not defined,
- * do not populate the dispatch table with its functions
- */
-#define InitRGXKICKSYNCBridge() \
-	PVRSRV_OK
-
-#define DeinitRGXKICKSYNCBridge()
-
-#endif /* SUPPORT_RGXKICKSYNC_BRIDGE */
