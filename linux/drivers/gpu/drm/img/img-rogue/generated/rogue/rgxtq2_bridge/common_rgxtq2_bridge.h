@@ -75,10 +75,10 @@ typedef struct PVRSRV_BRIDGE_IN_RGXTDMCREATETRANSFERCONTEXT_TAG
 	IMG_UINT64 ui64RobustnessAddress;
 	IMG_HANDLE hPrivData;
 	IMG_BYTE *pui8FrameworkCmd;
-	IMG_INT32 i32Priority;
 	IMG_UINT32 ui32ContextFlags;
 	IMG_UINT32 ui32FrameworkCmdSize;
 	IMG_UINT32 ui32PackedCCBSizeU88;
+	IMG_UINT32 ui32Priority;
 } __packed PVRSRV_BRIDGE_IN_RGXTDMCREATETRANSFERCONTEXT;
 
 /* Bridge out structure for RGXTDMCreateTransferContext */
@@ -112,7 +112,7 @@ typedef struct PVRSRV_BRIDGE_OUT_RGXTDMDESTROYTRANSFERCONTEXT_TAG
 typedef struct PVRSRV_BRIDGE_IN_RGXTDMSETTRANSFERCONTEXTPRIORITY_TAG
 {
 	IMG_HANDLE hTransferContext;
-	IMG_INT32 i32Priority;
+	IMG_UINT32 ui32Priority;
 } __packed PVRSRV_BRIDGE_IN_RGXTDMSETTRANSFERCONTEXTPRIORITY;
 
 /* Bridge out structure for RGXTDMSetTransferContextPriority */

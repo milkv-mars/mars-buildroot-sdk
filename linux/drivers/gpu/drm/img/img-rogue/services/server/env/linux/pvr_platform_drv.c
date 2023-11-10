@@ -66,8 +66,6 @@
 /* This header must always be included last */
 #include "kernel_compatibility.h"
 
-MODULE_IMPORT_NS(DMA_BUF);
-
 static struct drm_driver pvr_drm_platform_driver;
 
 #if defined(MODULE) && !defined(PVR_LDM_PLATFORM_PRE_REGISTERED)
@@ -247,10 +245,11 @@ static int pvr_remove(struct platform_device *pdev)
 static void pvr_shutdown(struct platform_device *pdev)
 {
 	struct drm_device *ddev = platform_get_drvdata(pdev);
+	struct pvr_drm_private *priv = ddev->dev_private;
 
 	DRM_DEBUG_DRIVER("device %p\n", &pdev->dev);
 
-	PVRSRVDeviceShutdown(ddev);
+	PVRSRVDeviceShutdown(priv->dev_node);
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0))
@@ -303,6 +302,7 @@ static int __init pvr_init(void)
 	pvr_drm_platform_driver.set_busid = drm_platform_set_busid;
 #endif
 
+	printk("@@#########################@@\n");
 	err = PVRSRVDriverInit();
 	if (err)
 		return err;
@@ -311,7 +311,7 @@ static int __init pvr_init(void)
 	if (err)
 		return err;
 
-	return 0; // pvr_devices_register();
+	return 0;//pvr_devices_register();
 }
 
 static void __exit pvr_exit(void)
@@ -325,5 +325,6 @@ static void __exit pvr_exit(void)
 	DRM_DEBUG_DRIVER("done\n");
 }
 
-late_initcall(pvr_init);
+module_init(pvr_init);
+//late_initcall(pvr_init);
 module_exit(pvr_exit);

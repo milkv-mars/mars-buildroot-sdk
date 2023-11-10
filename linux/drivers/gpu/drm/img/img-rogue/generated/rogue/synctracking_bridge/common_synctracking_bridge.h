@@ -81,10 +81,10 @@ typedef struct PVRSRV_BRIDGE_IN_SYNCRECORDADD_TAG
 {
 	IMG_HANDLE hhServerSyncPrimBlock;
 	const IMG_CHAR *puiClassName;
+	IMG_BOOL bbServerSync;
 	IMG_UINT32 ui32ClassNameSize;
 	IMG_UINT32 ui32ui32FwBlockAddr;
 	IMG_UINT32 ui32ui32SyncOffset;
-	IMG_BOOL bbServerSync;
 } __packed PVRSRV_BRIDGE_IN_SYNCRECORDADD;
 
 /* Bridge out structure for SyncRecordAdd */

@@ -208,9 +208,9 @@ typedef struct PVRSRV_BRIDGE_OUT_SYNCPRIMPDUMPCBP_TAG
 typedef struct PVRSRV_BRIDGE_IN_SYNCALLOCEVENT_TAG
 {
 	const IMG_CHAR *puiClassName;
+	IMG_BOOL bServerSync;
 	IMG_UINT32 ui32ClassNameSize;
 	IMG_UINT32 ui32FWAddr;
-	IMG_BOOL bServerSync;
 } __packed PVRSRV_BRIDGE_IN_SYNCALLOCEVENT;
 
 /* Bridge out structure for SyncAllocEvent */

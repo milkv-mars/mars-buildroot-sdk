@@ -48,6 +48,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "vmm_impl.h"
 #include "img_types.h"
 #include "pvrsrv_error.h"
+#include "vmm_pvz_common.h"
 
 /*!
 *******************************************************************************
@@ -57,7 +58,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  @Return        PVRSRV_OK on success. Otherwise, a PVRSRV error code
 ******************************************************************************/
 PVRSRV_ERROR
-PvzServerMapDevPhysHeap(IMG_UINT32 ui32DriverID,
+PvzServerMapDevPhysHeap(IMG_UINT32 ui32OSID,
+						IMG_UINT32 ui32FuncID,
 						IMG_UINT32 ui32DevID,
 						IMG_UINT64 ui64Size,
 						IMG_UINT64 ui64PAddr);
@@ -70,7 +72,8 @@ PvzServerMapDevPhysHeap(IMG_UINT32 ui32DriverID,
  @Return        PVRSRV_OK on success. Otherwise, a PVRSRV error code
 ******************************************************************************/
 PVRSRV_ERROR
-PvzServerUnmapDevPhysHeap(IMG_UINT32 ui32DriverID,
+PvzServerUnmapDevPhysHeap(IMG_UINT32 ui32OSID,
+						  IMG_UINT32 ui32FuncID,
 						  IMG_UINT32 ui32DevID);
 
 /*!
@@ -82,8 +85,7 @@ PvzServerUnmapDevPhysHeap(IMG_UINT32 ui32DriverID,
  @Return        PVRSRV_OK on success. Otherwise, a PVRSRV error code
 ******************************************************************************/
 PVRSRV_ERROR
-PvzServerOnVmOnline(IMG_UINT32 ui32DriverID,
-					IMG_UINT32 ui32DevID);
+PvzServerOnVmOnline(IMG_UINT32 ui32OSID);
 
 /*!
 *******************************************************************************
@@ -96,11 +98,10 @@ PvzServerOnVmOnline(IMG_UINT32 ui32DriverID,
                 the GPU and it is safe to remove the memory for such VM.
  @Return        PVRSRV_OK on success. PVRSRV_ERROR_TIMEOUT if for some reason
                 the FW is taking too long to clean-up the resources of the
-                DriverID. Otherwise, a PVRSRV_ERROR code.
+                OSID. Otherwise, a PVRSRV_ERROR code.
 ******************************************************************************/
 PVRSRV_ERROR
-PvzServerOnVmOffline(IMG_UINT32 ui32DriverID,
-					 IMG_UINT32 ui32DevID);
+PvzServerOnVmOffline(IMG_UINT32 ui32OSID);
 
 /*!
 *******************************************************************************
@@ -111,8 +112,7 @@ PvzServerOnVmOffline(IMG_UINT32 ui32DriverID,
 ******************************************************************************/
 PVRSRV_ERROR
 PvzServerVMMConfigure(VMM_CONF_PARAM eVMMParamType,
-					  IMG_UINT32 ui32ParamValue,
-					  IMG_UINT32 ui32DevID);
+                      IMG_UINT32 ui32ParamValue);
 
 #endif /* VMM_PVZ_SERVER_H */
 

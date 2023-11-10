@@ -100,7 +100,6 @@ typedef struct PVRSRV_BRIDGE_OUT_PVRSRVPDUMPGETFRAME_TAG
 /* Bridge in structure for PVRSRVPDumpSetDefaultCaptureParams */
 typedef struct PVRSRV_BRIDGE_IN_PVRSRVPDUMPSETDEFAULTCAPTUREPARAMS_TAG
 {
-	IMG_UINT32 ui32AutoTermTimeout;
 	IMG_UINT32 ui32End;
 	IMG_UINT32 ui32Interval;
 	IMG_UINT32 ui32MaxParamFileSize;
@@ -127,8 +126,8 @@ typedef struct PVRSRV_BRIDGE_IN_PVRSRVPDUMPISLASTCAPTUREFRAME_TAG
 /* Bridge out structure for PVRSRVPDumpIsLastCaptureFrame */
 typedef struct PVRSRV_BRIDGE_OUT_PVRSRVPDUMPISLASTCAPTUREFRAME_TAG
 {
-	PVRSRV_ERROR eError;
 	IMG_BOOL bpbIsLastCaptureFrame;
+	PVRSRV_ERROR eError;
 } __packed PVRSRV_BRIDGE_OUT_PVRSRVPDUMPISLASTCAPTUREFRAME;
 
 /*******************************************

@@ -91,31 +91,26 @@ EXPORT_SYMBOL(DCDisplayHasPendingCommand);
 EXPORT_SYMBOL(DCImportBufferAcquire);
 EXPORT_SYMBOL(DCImportBufferRelease);
 
-EXPORT_SYMBOL(PVRSRVGetDriverStatus);
-EXPORT_SYMBOL(PVRSRVSystemInstallDeviceLISR);
-EXPORT_SYMBOL(PVRSRVSystemUninstallDeviceLISR);
-
-#include "pvr_notifier.h"
-EXPORT_SYMBOL(PVRSRVCheckStatus);
-#endif /* defined(SUPPORT_DISPLAY_CLASS) */
-
-#if defined(SUPPORT_EXTERNAL_PHYSHEAP_INTERFACE)
-/*
- * Physmem interface.
- * Required by LMA DC drivers, and some non-DC LMA display drivers.
- */
+/* Physmem interface (required by LMA DC drivers) */
 #include "physheap.h"
-EXPORT_SYMBOL(PhysHeapAcquireByID);
+EXPORT_SYMBOL(PhysHeapAcquireByUsage);
 EXPORT_SYMBOL(PhysHeapRelease);
 EXPORT_SYMBOL(PhysHeapGetType);
 EXPORT_SYMBOL(PhysHeapGetCpuPAddr);
 EXPORT_SYMBOL(PhysHeapGetSize);
 EXPORT_SYMBOL(PhysHeapCpuPAddrToDevPAddr);
 
+EXPORT_SYMBOL(PVRSRVGetDriverStatus);
+EXPORT_SYMBOL(PVRSRVSystemInstallDeviceLISR);
+EXPORT_SYMBOL(PVRSRVSystemUninstallDeviceLISR);
+
+#include "pvr_notifier.h"
+EXPORT_SYMBOL(PVRSRVCheckStatus);
+
 #include "pvr_debug.h"
 EXPORT_SYMBOL(PVRSRVGetErrorString);
 EXPORT_SYMBOL(PVRSRVGetDeviceInstance);
-#endif
+#endif /* defined(SUPPORT_DISPLAY_CLASS) */
 
 #if defined(SUPPORT_RGX)
 #include "rgxapi_km.h"
@@ -150,14 +145,8 @@ CONNECTION_DATA *LinuxServicesConnectionFromFile(struct file *pFile)
 {
 	if (pFile)
 	{
-		struct drm_file *psDRMFile;
-		PVRSRV_CONNECTION_PRIV *psConnectionPriv;
-
-		psDRMFile = pFile->private_data;
-		PVR_LOG_RETURN_IF_FALSE(psDRMFile != NULL, "psDRMFile is NULL", NULL);
-
-		psConnectionPriv = (PVRSRV_CONNECTION_PRIV*)psDRMFile->driver_priv;
-		PVR_LOG_RETURN_IF_FALSE(psConnectionPriv != NULL, "psConnectionPriv is NULL", NULL);
+		struct drm_file *psDRMFile = pFile->private_data;
+		PVRSRV_CONNECTION_PRIV *psConnectionPriv = (PVRSRV_CONNECTION_PRIV*)psDRMFile->driver_priv;
 
 		return (CONNECTION_DATA*)psConnectionPriv->pvConnectionData;
 	}
@@ -276,7 +265,6 @@ int PVRSRVDriverInit(void)
 	 * need it */
 	PVRGpuTraceInitAppHintCallbacks(NULL);
 #endif
-
 	return 0;
 }
 
@@ -332,7 +320,7 @@ int PVRSRVDeviceInit(PVRSRV_DEVICE_NODE *psDeviceNode)
 		{
 			PVR_DPF((PVR_DBG_WARNING,
 				 "%s: failed to initialise PVR GPU Tracing on device%d (%d)",
-				 __func__, psDeviceNode->sDevId.i32KernelDeviceID, error));
+				 __func__, psDeviceNode->sDevId.i32OsDeviceID, error));
 		}
 	}
 #endif
@@ -367,23 +355,29 @@ void PVRSRVDeviceDeinit(PVRSRV_DEVICE_NODE *psDeviceNode)
 /**************************************************************************/ /*!
 @Function     PVRSRVDeviceShutdown
 @Description  Common device shutdown.
-@Input        psDev  The device node representing the device that should
-                     be shutdown
+@Input        psDeviceNode  The device node representing the device that should
+                            be shutdown
 @Return       void
 */ /***************************************************************************/
 
-void PVRSRVDeviceShutdown(struct drm_device *psDev)
+void PVRSRVDeviceShutdown(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
-	struct pvr_drm_private *psDevPriv = psDev->dev_private;
-	PVRSRV_DEVICE_NODE *psDeviceNode = psDevPriv->dev_node;
+	PVRSRV_ERROR eError;
 
-	/* Since this is a shutdown request ignore the returned error and try to
-	 * to power off the device. This is done because there is no way of
-	 * signalling the OS that this call failed. */
-	(void) LinuxBridgeBlockClientsAccess(psDevPriv, IMG_TRUE);
+	/*
+	 * Disable the bridge to stop processes trying to use the driver
+	 * after it has been shut down.
+	 */
+	eError = LinuxBridgeBlockClientsAccess(IMG_TRUE);
 
-	/* Passing PVRSRV_POWER_FLAGS_NONE as there are no special actions required
-	 * from the shutdown call beside the regular device power off. */
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR,
+			"%s: Failed to suspend driver (%d)",
+			__func__, eError));
+		return;
+	}
+
 	(void) PVRSRVSetDeviceSystemPowerState(psDeviceNode,
 	                                       PVRSRV_SYS_POWER_STATE_OFF,
 	                                       PVRSRV_POWER_FLAGS_NONE);
@@ -392,22 +386,18 @@ void PVRSRVDeviceShutdown(struct drm_device *psDev)
 /**************************************************************************/ /*!
 @Function     PVRSRVDeviceSuspend
 @Description  Common device suspend.
-@Input        psDev  The device node representing the device that should
-                     be suspended
-@Return       int    0 on success and a Linux error code otherwise
+@Input        psDeviceNode  The device node representing the device that should
+                            be suspended
+@Return       int           0 on success and a Linux error code otherwise
 */ /***************************************************************************/
-int PVRSRVDeviceSuspend(struct drm_device *psDev)
+int PVRSRVDeviceSuspend(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
-	struct pvr_drm_private *psDevPriv = psDev->dev_private;
-	PVRSRV_DEVICE_NODE *psDeviceNode = psDevPriv->dev_node;
-	PVRSRV_ERROR eError;
-
-	/* LinuxBridgeBlockClientsAccess prevents processes from using the driver
-	 * while it's suspended (this is needed for Android). */
-	eError = LinuxBridgeBlockClientsAccess(psDevPriv, IMG_FALSE);
-	PVR_LOG_RETURN_IF_FALSE_VA(eError == PVRSRV_OK, -EFAULT,
-	                           "LinuxBridgeBlockClientsAccess() failed with error %u",
-	                           eError);
+	/*
+	 * LinuxBridgeBlockClientsAccess prevents processes from using the driver
+	 * while it's suspended (this is needed for Android). Acquire the bridge
+	 * lock first to ensure the driver isn't currently in use.
+	 */
+	LinuxBridgeBlockClientsAccess(IMG_FALSE);
 
 #if defined(SUPPORT_AUTOVZ)
 	/* To allow the driver to power down the GPU under AutoVz, the firmware must
@@ -417,10 +407,9 @@ int PVRSRVDeviceSuspend(struct drm_device *psDev)
 
 	if (PVRSRVSetDeviceSystemPowerState(psDeviceNode,
 										PVRSRV_SYS_POWER_STATE_OFF,
-										PVRSRV_POWER_FLAGS_SUSPEND_REQ) != PVRSRV_OK)
+										PVRSRV_POWER_FLAGS_SUSPEND) != PVRSRV_OK)
 	{
-		/* Ignore return error as we're already returning an error here. */
-		(void) LinuxBridgeUnblockClientsAccess(psDevPriv);
+		LinuxBridgeUnblockClientsAccess();
 		return -EINVAL;
 	}
 
@@ -430,24 +419,20 @@ int PVRSRVDeviceSuspend(struct drm_device *psDev)
 /**************************************************************************/ /*!
 @Function     PVRSRVDeviceResume
 @Description  Common device resume.
-@Input        psDev  The device node representing the device that should
-                     be resumed
-@Return       int    0 on success and a Linux error code otherwise
+@Input        psDeviceNode  The device node representing the device that should
+                            be resumed
+@Return       int           0 on success and a Linux error code otherwise
 */ /***************************************************************************/
-int PVRSRVDeviceResume(struct drm_device *psDev)
+int PVRSRVDeviceResume(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
-	struct pvr_drm_private *psDevPriv = psDev->dev_private;
-	PVRSRV_DEVICE_NODE *psDeviceNode = psDevPriv->dev_node;
-
 	if (PVRSRVSetDeviceSystemPowerState(psDeviceNode,
 										PVRSRV_SYS_POWER_STATE_ON,
-										PVRSRV_POWER_FLAGS_RESUME_REQ) != PVRSRV_OK)
+										PVRSRV_POWER_FLAGS_SUSPEND) != PVRSRV_OK)
 	{
 		return -EINVAL;
 	}
 
-	/* Ignore return error. We should proceed even if this fails. */
-	(void) LinuxBridgeUnblockClientsAccess(psDevPriv);
+	LinuxBridgeUnblockClientsAccess();
 
 	/*
 	 * Reprocess the device queues in case commands were blocked during
@@ -538,9 +523,8 @@ int PVRSRVDeviceServicesOpen(PVRSRV_DEVICE_NODE *psDeviceNode,
 		psConnectionPriv = (PVRSRV_CONNECTION_PRIV*)psDRMFile->driver_priv;
 	}
 
-	if (psDeviceNode->eDevState == PVRSRV_DEVICE_STATE_CREATED)
+	if (psDeviceNode->eDevState == PVRSRV_DEVICE_STATE_INIT)
 	{
-		PVRSRVSetSystemPowerState(psDeviceNode->psDevConfig, PVRSRV_SYS_POWER_STATE_ON);
 		eError = PVRSRVCommonDeviceInitialise(psDeviceNode);
 		if (eError != PVRSRV_OK)
 		{
@@ -576,16 +560,6 @@ int PVRSRVDeviceServicesOpen(PVRSRV_DEVICE_NODE *psDeviceNode,
 	psConnectionPriv->pfDeviceRelease = PVRSRVCommonConnectionDisconnect;
 #endif
 	psDRMFile->driver_priv = (void*)psConnectionPriv;
-
-#if defined(PVRSRV_ANDROID_TRACE_GPU_WORK_PERIOD)
-	eError = PVRSRVGpuTraceWorkPeriodEventStatsRegister(
-			&psConnectionPriv->pvGpuWorkPeriodEventStats);
-	if (eError != PVRSRV_OK)
-	{
-		iErr = -ENOMEM;
-		goto fail_connect;
-	}
-#endif /* defined(PVRSRV_ANDROID_TRACE_GPU_WORK_PERIOD) */
 	goto out;
 
 fail_connect:
@@ -716,15 +690,6 @@ void PVRSRVDeviceRelease(PVRSRV_DEVICE_NODE *psDeviceNode,
 
 		if (psConnectionPriv->pvConnectionData)
 		{
-#if defined(PVRSRV_ANDROID_TRACE_GPU_WORK_PERIOD)
-			if (psConnectionPriv->pvGpuWorkPeriodEventStats)
-			{
-				PVRSRVGpuTraceWorkPeriodEventStatsUnregister(
-						psConnectionPriv->pvGpuWorkPeriodEventStats);
-				psConnectionPriv->pvGpuWorkPeriodEventStats = NULL;
-			}
-#endif /* defined(PVRSRV_ANDROID_TRACE_GPU_WORK_PERIOD) */
-
 #if (PVRSRV_DEVICE_INIT_MODE == PVRSRV_LINUX_DEV_INIT_ON_CONNECT)
 			if (psConnectionPriv->pfDeviceRelease)
 			{

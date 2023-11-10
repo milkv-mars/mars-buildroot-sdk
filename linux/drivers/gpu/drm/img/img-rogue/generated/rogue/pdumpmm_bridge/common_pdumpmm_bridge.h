@@ -78,8 +78,8 @@ typedef struct PVRSRV_BRIDGE_IN_PMRPDUMPLOADMEM_TAG
 	IMG_DEVMEM_OFFSET_T uiOffset;
 	IMG_DEVMEM_SIZE_T uiSize;
 	IMG_HANDLE hPMR;
-	IMG_UINT32 ui32PDumpFlags;
 	IMG_BOOL bbZero;
+	IMG_UINT32 ui32PDumpFlags;
 } __packed PVRSRV_BRIDGE_IN_PMRPDUMPLOADMEM;
 
 /* Bridge out structure for PMRPDumpLoadMem */

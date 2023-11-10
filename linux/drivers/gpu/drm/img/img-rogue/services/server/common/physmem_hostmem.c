@@ -158,22 +158,22 @@ PVRSRV_ERROR HostMemDeviceCreate(PVRSRV_DEVICE_NODE **ppsDeviceNode)
 	/* early save return pointer to aid clean-up */
 	*ppsDeviceNode = psDeviceNode;
 
-	psDeviceNode->sDevId.ui32InternalID = PVRSRV_HOST_DEVICE_ID;
 	psDeviceNode->psDevConfig = psDevConfig;
-	psDeviceNode->psPhysHeapList = NULL;
-
-	eError = OSLockCreate(&psDeviceNode->hPhysHeapLock);
-	PVR_LOG_RETURN_IF_ERROR(eError, "OSLockCreate");
+	psDeviceNode->papsRegisteredPhysHeaps =
+		OSAllocZMem(sizeof(*psDeviceNode->papsRegisteredPhysHeaps) *
+					psDevConfig->ui32PhysHeapCount);
+	PVR_LOG_RETURN_IF_NOMEM(psDeviceNode->papsRegisteredPhysHeaps, "OSAllocZMem");
 
 	eError = PhysHeapCreateHeapFromConfig(psDeviceNode,
 										  &psDevConfig->pasPhysHeaps[0],
-										  NULL);
+										  &psDeviceNode->papsRegisteredPhysHeaps[0]);
 	PVR_LOG_RETURN_IF_ERROR(eError, "PhysHeapCreateHeapFromConfig");
+	psDeviceNode->ui32RegisteredPhysHeaps = 1;
 
 	/* Only CPU local heap is valid on host-mem DevNode, so enable minimal callbacks */
-	eError = PhysHeapAcquireByID(PVRSRV_PHYS_HEAP_CPU_LOCAL,
-								 psDeviceNode,
-								 &psDeviceNode->apsPhysHeap[PVRSRV_PHYS_HEAP_CPU_LOCAL]);
+	eError = PhysHeapAcquireByDevPhysHeap(PVRSRV_PHYS_HEAP_CPU_LOCAL,
+										  psDeviceNode,
+										  &psDeviceNode->apsPhysHeap[PVRSRV_PHYS_HEAP_CPU_LOCAL]);
 	PVR_LOG_RETURN_IF_ERROR(eError, "PhysHeapAcquire");
 
 	return PVRSRV_OK;
@@ -185,15 +185,22 @@ void HostMemDeviceDestroy(PVRSRV_DEVICE_NODE *psDeviceNode)
 	{
 		return;
 	}
-	else
+
+	if (psDeviceNode->papsRegisteredPhysHeaps)
 	{
 		if (psDeviceNode->apsPhysHeap[PVRSRV_PHYS_HEAP_CPU_LOCAL])
 		{
 			PhysHeapRelease(psDeviceNode->apsPhysHeap[PVRSRV_PHYS_HEAP_CPU_LOCAL]);
 		}
 
-		PhysHeapDestroyDeviceHeaps(psDeviceNode);
-	}
+		if (psDeviceNode->papsRegisteredPhysHeaps[0])
+		{
+			/* clean-up function as well is aware of only one heap */
+			PVR_ASSERT(psDeviceNode->ui32RegisteredPhysHeaps == 1);
+			PhysHeapDestroy(psDeviceNode->papsRegisteredPhysHeaps[0]);
+		}
 
+		OSFreeMem(psDeviceNode->papsRegisteredPhysHeaps);
+	}
 	OSFreeMem(psDeviceNode);
 }

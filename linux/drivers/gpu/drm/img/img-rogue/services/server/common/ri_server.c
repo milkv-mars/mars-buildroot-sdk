@@ -41,7 +41,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
-#if defined(__linux__) && defined(__KERNEL__)
+#if defined(__linux__)
  #include <linux/version.h>
  #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
   #include <linux/stdarg.h>
@@ -113,8 +113,6 @@ typedef IMG_UINT64 _RI_BASE_T;
 
 #define RI_PROC_BUF_SIZE    16
 
-#define RI_DEV_ID_BUF_SIZE  4
-
 #define RI_MEMDESC_SUM_FRMT     "PID %d %s MEMDESCs Alloc'd:0x%010" IMG_UINT64_FMTSPECx " (%" IMG_UINT64_FMTSPEC "K) + "\
                                                   "Imported:0x%010" IMG_UINT64_FMTSPECx " (%" IMG_UINT64_FMTSPEC "K) = "\
                                                      "Total:0x%010" IMG_UINT64_FMTSPECx " (%" IMG_UINT64_FMTSPEC "K)\n"
@@ -125,8 +123,8 @@ typedef IMG_UINT64 _RI_BASE_T;
                                         "[Physical: 0x%010" IMG_UINT64_FMTSPECx ", %" IMG_UINT64_FMTSPEC "K]\n"
 #define RI_PMR_SUM_BUF_SIZE (sizeof(RI_PMR_SUM_FRMT)+(20+40))
 
-#define RI_PMR_ENTRY_FRMT      "%%sPID:%%-5d DEV:%%s <%%p>\t%%-%ds\t0x%%010" IMG_UINT64_FMTSPECx "\t[0x%%010" IMG_UINT64_FMTSPECx "]\t%%c"
-#define RI_PMR_ENTRY_BUF_SIZE  (sizeof(RI_PMR_ENTRY_FRMT)+(3+5+RI_DEV_ID_BUF_SIZE+16+PVR_ANNOTATION_MAX_LEN+10+10))
+#define RI_PMR_ENTRY_FRMT      "%%sPID:%%-5d <%%p>\t%%-%ds\t0x%%010" IMG_UINT64_FMTSPECx "\t[0x%%010" IMG_UINT64_FMTSPECx "]\t%%c"
+#define RI_PMR_ENTRY_BUF_SIZE  (sizeof(RI_PMR_ENTRY_FRMT)+(3+5+16+PVR_ANNOTATION_MAX_LEN+10+10))
 #define RI_PMR_ENTRY_FRMT_SIZE (sizeof(RI_PMR_ENTRY_FRMT))
 
 /* Use %5d rather than %d so the output aligns in server/kernel.log, debugFS sees extra spaces */
@@ -140,9 +138,12 @@ static IMG_CHAR g_szSysAllocImport[RI_SYS_ALLOC_IMPORT_FRMT_SIZE];
 #define RI_MEMDESC_ENTRY_IMPORT_FRMT     "{Import from PID %d}"
 #define RI_MEMDESC_ENTRY_IMPORT_BUF_SIZE (sizeof(RI_MEMDESC_ENTRY_IMPORT_FRMT)+5)
 
-#define RI_MEMDESC_ENTRY_FRMT      "%%sPID:%%-5d DEV:%%s 0x%%010" IMG_UINT64_FMTSPECx "\t%%-%ds %%s\t0x%%010" IMG_UINT64_FMTSPECx "\t<%%p> %%s%%s%%c"
-#define RI_MEMDESC_ENTRY_BUF_SIZE  (sizeof(RI_MEMDESC_ENTRY_FRMT)+(3+5+RI_DEV_ID_BUF_SIZE+10+PVR_ANNOTATION_MAX_LEN+RI_MEMDESC_ENTRY_PROC_BUF_SIZE+16+\
-                                               RI_MEMDESC_ENTRY_IMPORT_BUF_SIZE+RI_SYS_ALLOC_IMPORT_FRMT_SIZE))
+#define RI_MEMDESC_ENTRY_UNPINNED_FRMT     "{Unpinned}"
+#define RI_MEMDESC_ENTRY_UNPINNED_BUF_SIZE (sizeof(RI_MEMDESC_ENTRY_UNPINNED_FRMT))
+
+#define RI_MEMDESC_ENTRY_FRMT      "%%sPID:%%-5d 0x%%010" IMG_UINT64_FMTSPECx "\t%%-%ds %%s\t0x%%010" IMG_UINT64_FMTSPECx "\t<%%p> %%s%%s%%s%%c"
+#define RI_MEMDESC_ENTRY_BUF_SIZE  (sizeof(RI_MEMDESC_ENTRY_FRMT)+(3+5+10+PVR_ANNOTATION_MAX_LEN+RI_MEMDESC_ENTRY_PROC_BUF_SIZE+16+\
+                                               RI_MEMDESC_ENTRY_IMPORT_BUF_SIZE+RI_SYS_ALLOC_IMPORT_FRMT_SIZE+RI_MEMDESC_ENTRY_UNPINNED_BUF_SIZE))
 #define RI_MEMDESC_ENTRY_FRMT_SIZE (sizeof(RI_MEMDESC_ENTRY_FRMT))
 
 
@@ -163,7 +164,6 @@ struct _RI_SUBLIST_ENTRY_
 	IMG_BOOL				bIsImport;
 	IMG_BOOL				bIsSuballoc;
 	IMG_PID					pid;
-	IMG_UINT32				ui32DevID;
 	IMG_CHAR				ai8ProcName[RI_PROC_BUF_SIZE];
 	IMG_DEV_VIRTADDR		sVAddr;
 	IMG_UINT64				ui64Offset;
@@ -184,7 +184,6 @@ struct _RI_LIST_ENTRY_
 	IMG_UINT32				valid;
 	PMR						*psPMR;
 	IMG_PID					pid;
-	IMG_UINT32				ui32DevID;
 	IMG_CHAR				ai8ProcName[RI_PROC_BUF_SIZE];
 	IMG_UINT16				ui16SubListCount;
 	IMG_UINT16				ui16MaxSubListCount;
@@ -444,8 +443,6 @@ PVRSRV_ERROR RIWritePMREntryWithOwnerKM(PMR *psPMR,
 	psRIEntry = (RI_LIST_ENTRY *)hashData;
 	if (!psRIEntry)
 	{
-		PVRSRV_DEVICE_NODE *psDeviceNode = (PVRSRV_DEVICE_NODE *)PMR_DeviceNode(psPMR);
-
 		/*
 		 * If failed to find a matching existing entry, create a new one
 		 */
@@ -460,6 +457,7 @@ PVRSRV_ERROR RIWritePMREntryWithOwnerKM(PMR *psPMR,
 		else
 		{
 			PMR_FLAGS_T uiPMRFlags = PMR_Flags(psPMR);
+			PVRSRV_DEVICE_NODE *psDeviceNode = (PVRSRV_DEVICE_NODE *)PMR_DeviceNode(psPMR);
 
 			/*
 			 * Add new RI Entry
@@ -484,7 +482,7 @@ PVRSRV_ERROR RIWritePMREntryWithOwnerKM(PMR *psPMR,
 			 * or the owner PID is PVR_SYS_ALLOC_PID.
 			 * Also record host dev node allocs on the system PID.
 			 */
-			if (psDeviceNode->eDevState < PVRSRV_DEVICE_STATE_ACTIVE ||
+			if (psDeviceNode->eDevState == PVRSRV_DEVICE_STATE_INIT ||
 				PVRSRV_CHECK_FW_MAIN(uiPMRFlags) ||
 				ui32Owner == PVR_SYS_ALLOC_PID ||
 				psDeviceNode == PVRSRVGetPVRSRVData()->psHostMemDeviceNode)
@@ -517,7 +515,6 @@ PVRSRV_ERROR RIWritePMREntryWithOwnerKM(PMR *psPMR,
 
 		psRIEntry->psPMR = psPMR;
 		psRIEntry->ui32Flags = 0;
-		psRIEntry->ui32DevID = psDeviceNode->sDevId.ui32InternalID;
 
 		/* Create index entry in Hash Table */
 		HASH_Insert_Extended (g_pRIHashTable, (void *)&pPMRHashKey, (uintptr_t)psRIEntry);
@@ -654,7 +651,7 @@ PVRSRV_ERROR RIWriteMEMDESCEntryKM(PMR *psPMR,
 	{
 		PVRSRV_DEVICE_NODE *psDeviceNode = (PVRSRV_DEVICE_NODE *)PMR_DeviceNode(psRISubEntry->psRI->psPMR);
 
-		if (psDeviceNode->eDevState < PVRSRV_DEVICE_STATE_ACTIVE ||
+		if (psDeviceNode->eDevState == PVRSRV_DEVICE_STATE_INIT ||
 			psDeviceNode == PVRSRVGetPVRSRVData()->psHostMemDeviceNode)
 		{
 			psRISubEntry->pid = psRISubEntry->psRI->pid;
@@ -663,26 +660,25 @@ PVRSRV_ERROR RIWriteMEMDESCEntryKM(PMR *psPMR,
 		{
 			psRISubEntry->pid = OSGetCurrentClientProcessIDKM();
 		}
-
-		if (ui32TextBSize > sizeof(psRISubEntry->ai8TextB)-1)
-		{
-			PVR_DPF((PVR_DBG_WARNING,
-					 "%s: TextBSize too long (%u). Text will be truncated "
-					 "to %zu characters", __func__,
-					 ui32TextBSize, sizeof(psRISubEntry->ai8TextB)-1));
-		}
-
-		/* copy ai8TextB field data */
-		OSSNPrintf((IMG_CHAR *)psRISubEntry->ai8TextB, sizeof(psRISubEntry->ai8TextB), "%s", psz8TextB);
-
-		psRISubEntry->ui32DevID = psDeviceNode->sDevId.ui32InternalID;
-		psRISubEntry->ui64Offset = ui64Offset;
-		psRISubEntry->ui64Size = ui64Size;
-		psRISubEntry->bIsImport = bIsImport;
-		psRISubEntry->bIsSuballoc = bIsSuballoc;
-		OSSNPrintf((IMG_CHAR *)psRISubEntry->ai8ProcName, RI_PROC_BUF_SIZE, "%s", OSGetCurrentClientProcessNameKM());
-		dllist_init (&(psRISubEntry->sProcListNode));
 	}
+
+	if (ui32TextBSize > sizeof(psRISubEntry->ai8TextB)-1)
+	{
+		PVR_DPF((PVR_DBG_WARNING,
+				 "%s: TextBSize too long (%u). Text will be truncated "
+				 "to %zu characters", __func__,
+				 ui32TextBSize, sizeof(psRISubEntry->ai8TextB)-1));
+	}
+
+	/* copy ai8TextB field data */
+	OSSNPrintf((IMG_CHAR *)psRISubEntry->ai8TextB, sizeof(psRISubEntry->ai8TextB), "%s", psz8TextB);
+
+	psRISubEntry->ui64Offset = ui64Offset;
+	psRISubEntry->ui64Size = ui64Size;
+	psRISubEntry->bIsImport = bIsImport;
+	psRISubEntry->bIsSuballoc = bIsSuballoc;
+	OSSNPrintf((IMG_CHAR *)psRISubEntry->ai8ProcName, RI_PROC_BUF_SIZE, "%s", OSGetCurrentClientProcessNameKM());
+	dllist_init (&(psRISubEntry->sProcListNode));
 
 	/*
 	 *	Now insert this MEMDESC into the proc list
@@ -748,9 +744,7 @@ PVRSRV_ERROR RIWriteMEMDESCEntryKM(PMR *psPMR,
  @Return	PVRSRV_ERROR
 
 ******************************************************************************/
-PVRSRV_ERROR RIWriteProcListEntryKM(CONNECTION_DATA *psConnection,
-                                    PVRSRV_DEVICE_NODE *psDeviceNode,
-                                    IMG_UINT32 ui32TextBSize,
+PVRSRV_ERROR RIWriteProcListEntryKM(IMG_UINT32 ui32TextBSize,
                                     const IMG_CHAR *psz8TextB,
                                     IMG_UINT64 ui64Size,
                                     IMG_UINT64 ui64DevVAddr,
@@ -759,8 +753,6 @@ PVRSRV_ERROR RIWriteProcListEntryKM(CONNECTION_DATA *psConnection,
 	uintptr_t hashData = 0;
 	IMG_PID		pid;
 	RI_SUBLIST_ENTRY *psRISubEntry = NULL;
-
-	PVR_UNREFERENCED_PARAMETER(psConnection);
 
 	if (!g_pRIHashTable)
 	{
@@ -791,7 +783,6 @@ PVRSRV_ERROR RIWriteProcListEntryKM(CONNECTION_DATA *psConnection,
 	psRISubEntry->valid = _VALID_RI_SUBLIST_ENTRY;
 
 	psRISubEntry->pid = OSGetCurrentClientProcessIDKM();
-	psRISubEntry->ui32DevID = psDeviceNode->sDevId.ui32InternalID;
 
 	if (ui32TextBSize > sizeof(psRISubEntry->ai8TextB)-1)
 	{
@@ -1445,8 +1436,6 @@ static void _GenerateMEMDESCEntryString(RI_SUBLIST_ENTRY *psRISubEntry,
 	IMG_PID uiRIPid = 0;
 	PMR* psRIPMR = NULL;
 	IMG_UINT32 ui32RIPMRFlags = 0;
-	IMG_BOOL bHostDevice = psRISubEntry->ui32DevID == PVRSRV_HOST_DEVICE_ID;
-	IMG_CHAR szDeviceID[RI_DEV_ID_BUF_SIZE];
 
 	if (psRISubEntry->psRI != NULL)
 	{
@@ -1468,14 +1457,6 @@ static void _GenerateMEMDESCEntryString(RI_SUBLIST_ENTRY *psRISubEntry,
 				RI_MEMDESC_ENTRY_PROC_FRMT,
 				psRISubEntry->pid,
 				psRISubEntry->ai8ProcName);
-	}
-
-	if (!bHostDevice)
-	{
-		OSSNPrintf(szDeviceID,
-				   sizeof(szDeviceID),
-				   "%-3d",
-				   psRISubEntry->ui32DevID);
 	}
 
 	if (psRISubEntry->bIsImport && psRIPMR)
@@ -1516,7 +1497,6 @@ static void _GenerateMEMDESCEntryString(RI_SUBLIST_ENTRY *psRISubEntry,
 				   szEntryFormat,
 				   (bDebugFs ? "" : "   "),
 				   psRISubEntry->pid,
-				   (bHostDevice ? "-  " : szDeviceID),
 				   (psRISubEntry->sVAddr.uiAddr + psRISubEntry->ui64Offset),
 				   pszAnnotationText,
 				   (bDebugFs ? "" : (char *)szProc),
@@ -1524,6 +1504,7 @@ static void _GenerateMEMDESCEntryString(RI_SUBLIST_ENTRY *psRISubEntry,
 				   psRIPMR,
 				   (psRISubEntry->bIsImport ? (char *)&szImport : ""),
 				   (!psRISubEntry->bIsImport && (ui32RIPMRFlags & RI_FLAG_SYSALLOC_PMR) && (psRISubEntry->pid != PVR_SYS_ALLOC_PID)) ? g_szSysAllocImport : "",
+				   (psRIPMR && PMR_IsUnpinned(psRIPMR)) ? RI_MEMDESC_ENTRY_UNPINNED_FRMT : "",
 				   (bDebugFs ? '\n' : ' '));
 	}
 }
@@ -1538,8 +1519,6 @@ static void _GeneratePMREntryString(RI_LIST_ENTRY *psRIEntry,
 	IMG_DEVMEM_SIZE_T uiLogicalSize = 0;
 	IMG_DEVMEM_SIZE_T uiPhysicalSize = 0;
 	IMG_CHAR          szEntryFormat[RI_PMR_ENTRY_FRMT_SIZE];
-	IMG_BOOL          bHostDevice = psRIEntry->ui32DevID == PVRSRV_HOST_DEVICE_ID;
-	IMG_CHAR          szDeviceID[RI_DEV_ID_BUF_SIZE];
 
 	PMR_LogicalSize(psRIEntry->psPMR, &uiLogicalSize);
 
@@ -1553,20 +1532,11 @@ static void _GeneratePMREntryString(RI_LIST_ENTRY *psRIEntry,
 	/* Set pszAnnotationText to that PMR RI entry */
 	pszAnnotationText = (IMG_PCHAR) PMR_GetAnnotation(psRIEntry->psPMR);
 
-	if (!bHostDevice)
-	{
-		OSSNPrintf(szDeviceID,
-				   sizeof(szDeviceID),
-				   "%-3d",
-				   psRIEntry->ui32DevID);
-	}
-
 	OSSNPrintf(pszEntryString,
 	           ui16MaxStrLen,
 	           szEntryFormat,
 	           (bDebugFs ? "" : "   "),
 	           psRIEntry->pid,
-	           (bHostDevice ? "-  " : szDeviceID),
 	           (void*)psRIEntry->psPMR,
 	           pszAnnotationText,
 	           uiLogicalSize,
