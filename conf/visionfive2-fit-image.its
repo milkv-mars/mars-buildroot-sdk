@@ -30,7 +30,7 @@
                 };
 
                 fdt {
-                        data = /incbin/("../work/linux/arch/riscv/boot/dts/starfive/jh7110-visionfive-v2.dtb");
+                        data = /incbin/("../work/linux/arch/riscv/boot/dts/starfive/jh7110-milkv-mars-cm-sdcard.dtb");
                         type = "flat_dt";
                         arch = "riscv";
                         load = <0x0 0x46000000>;
