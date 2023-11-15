@@ -1,6 +1,6 @@
-# StarFiveTech VisionFive2 SDK
+# Milk-V Mars/Mars-CM SDK
 
-This builds a complete RISC-V cross-compile toolchain for the `StarFiveTech` `JH7110` SoC. It also builds U-boot SPL, U-boot and a flattened image tree (FIT) image with a Opensbi binary, linux kernel, device tree, ramdisk image and rootfs image for the `JH7110 VisionFive2` board.
+This builds a complete RISC-V cross-compile toolchain for the `StarFiveTech` `JH7110` SoC. It also builds U-boot SPL, U-boot and a flattened image tree (FIT) image with a Opensbi binary, linux kernel, device tree, ramdisk image and rootfs image for the `JH7110` `Milk-V Mars` and `Mars CM` board.
 
 ## Prerequisites
 
@@ -17,38 +17,40 @@ libyaml-dev patchutils python3-pip zlib1g-dev device-tree-compiler dosfstools
 mtools kpartx rsync
 ```
 
-Additional packages for Git LFS support:
-
-```
-$ curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
-$ sudo apt-get install git-lfs
-```
-
 ## Fetch Code Instructions ##
 
-Checkout this repository  (e.g.: branch `JH7110_VisionFive2_devel`). Then checkout all of the linked submodules using:
-
-	$ git clone https://github.com/starfive-tech/VisionFive2.git
-	$ cd VisionFive2
-	$ git checkout JH7110_VisionFive2_devel
-	$ git submodule update --init --recursive
-This will take some time and require around 5GB of disk space. Some modules may fail because certain dependencies don't have the best git hosting. The only solution is to wait and try again later (or ask someone for a copy of that source repository).
-
-For user who build the release tag version, the above command is enough. For developer, need to switch the 5 submodules `buildroot`, `u-boot`, `linux`, `opensbi`, `soft_3rdpart` to correct branch manually, also could refer to `.gitmodule`
+Checkout this repository
 
 ```
-$ cd buildroot && git checkout --track origin/JH7110_VisionFive2_devel && cd ..
-$ cd u-boot && git checkout --track origin/JH7110_VisionFive2_devel && cd ..
-$ cd linux && git checkout --track origin/JH7110_VisionFive2_devel && cd ..
-$ cd opensbi && git checkout master && cd ..
-$ cd soft_3rdpart && git checkout JH7110_VisionFive2_devel && cd ..
+git clone https://github.com/milkv-mars/mars-buildroot-sdk.git --depth=1
 ```
+
+This will take some time and require around 5GB of disk space.
+
+Different boards use different branches
+
+- Mars
+  ```
+  git checkout dev
+  ```
+
+- Mars CM eMMC
+  ```
+  git checkout dev-mars-cm
+  ```
+
+- Mars CM SD Card
+  ```
+  git checkout dev-mars-cm-sdcard
+  ```
 
 ## Quick Build Instructions
 
 Below are the quick building for the initramfs image `image.fit` which could be translated to board through tftp and run on board. The completed toolchain, `u-boot-spl.bin.normal.out`, `visionfive2_fw_payload.img`, `image.fit` will be generated under `work/` directory. The completed build tree will consume about 16G of disk space.
 
-	$ make -j$(nproc)
+```
+$ make -j$(nproc)
+```
 
 Then the below target files will be generated, copy files to tftp server workspace path:
 
@@ -58,15 +60,20 @@ work/
 ├── image.fit
 ├── initramfs.cpio.gz
 ├── u-boot-spl.bin.normal.out
-├── linux/arch/riscv/boot
-    ├── dts
-    │   └── starfive
-    │       ├── jh7110-visionfive-v2-ac108.dtb
-    │       ├── jh7110-visionfive-v2.dtb
-    │       ├── jh7110-visionfive-v2-wm8960.dtb
-    │       ├── vf2-overlay
-    │       │   └── vf2-overlay-uart3-i2c.dtbo
-    └── Image.gz
+├── linux
+    ├── arch/riscv/boot
+    │   ├── dts
+    │   │   └── starfive
+    │   │       ├── jh7110-milkv-mars-cm-emmc.dtb
+    │   │       ├── jh7110-milkv-mars-cm-sdcard.dtb
+    │   │       ├── jh7110-milkv-mars.dtb
+    │   │       ├── jh7110-visionfive-v2-ac108.dtb
+    │   │       ├── jh7110-visionfive-v2.dtb
+    │   │       ├── jh7110-visionfive-v2-wm8960.dtb
+    │   │       ├── vf2-overlay
+    │   │       │   └── vf2-overlay-uart3-i2c.dtbo
+    │   └── Image.gz
+    └── vmlinuz-5.15.0
 ```
 
 Additional command to config buildroot, uboot, linux, busybox:
@@ -88,9 +95,9 @@ $ make -C ./work/buildroot_rootfs/ O=./work/buildroot_rootfs busybox-rebuild   #
 $ make -C ./work/buildroot_rootfs/ O=./work/buildroot_rootfs ffmpeg-rebuild    # build ffmpeg package
 ```
 
-## Running on JH7110 VisionFive2 Board via Network
+## Running on JH7110 Mars/Mars-CM Board via Network
 
-After the JH7110 VisionFive2 Board is properly connected to the serial port cable, network cable and power cord, turn on the power from the wall power socket to power and you will see the startup information as follows:
+After the JH7110 Mars/Mars-CM Board is properly connected to the serial port cable, network cable and power cord, turn on the power from the wall power socket to power and you will see the startup information as follows:
 
 ```
 U-Boot SPL 2021.10 (Oct 31 2022 - 12:11:37 +0800)
@@ -213,7 +220,7 @@ Password: starfive
 
 #### 2. Running the other dtb with the Image.gz and initramfs.cpio.gz
 
-If we want to loading the other dtb, e.g. `jh7110-visionfive-v2-wm8960.dtb`, follow the below
+If we want to loading the other dtb, e.g. `jh7110-milkv-mars-cm-sdcard.dtb`, follow the below
 
 Step1: set enviroment parameter:
 
@@ -224,7 +231,7 @@ setenv ipaddr 192.168.xxx.xxx; setenv serverip 192.168.xxx.xxx;
 Step2: upload files to ddr:
 
 ```
-tftpboot ${fdt_addr_r} jh7110-visionfive-v2-wm8960.dtb;
+tftpboot ${fdt_addr_r} jh7110-milkv-mars-cm-sdcard.dtb;
 tftpboot ${kernel_addr_r} Image.gz;
 tftpboot ${ramdisk_addr_r} initramfs.cpio.gz;
 run chipa_set_linux;run cpu_vol_set;
@@ -285,7 +292,12 @@ $ sudo resize2fs /dev/sdX4  # extend filesystem
 $ sudo fsck.ext4 /dev/sdX4
 ```
 
-The second way could be done on VisionFive2 board, use fdisk and resize2fs command：
+The second way could be done on Mars/Mars-CM board, use fdisk and resize2fs command：
+
+```
+Mars:    /dev/mmcblk1
+Mars CM: /dev/mmcblk0
+```
 
 ```
 # fdisk /dev/mmcblk1
@@ -373,7 +385,7 @@ Additional, you could remove the dtbo feature:
 
 Prepare the tftp sever. e.g. `sudo apt install tftpd-hpa` for Ubuntu host.
 
-1. Power on the VisionFive2 board and wait until enters the u-boot command line
+1. Power on the Mars/Mars-CM board and wait until enters the u-boot command line
 
 2. Configure the environment variables by executing:
 
