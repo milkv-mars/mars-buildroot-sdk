@@ -1,3 +1,4 @@
+English | [日本語](./README-ja.md)
 # Milk-V Mars/Mars-CM SDK
 
 This builds a complete RISC-V cross-compile toolchain for the `StarFiveTech` `JH7110` SoC. It also builds U-boot SPL, U-boot and a flattened image tree (FIT) image with a Opensbi binary, linux kernel, device tree, ramdisk image and rootfs image for the `JH7110` `Milk-V Mars` and `Mars CM` board.
