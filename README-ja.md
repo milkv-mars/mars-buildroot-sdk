@@ -99,7 +99,7 @@ $ make -C ./work/buildroot_rootfs/ O=./work/buildroot_rootfs ffmpeg-rebuild    #
 ```
 
 ## ネットワーク経由でJH7110のMars/Mars-CMボードで実行する
-JH7110のMars/Mars-CMボードがシリアルケーブル、ネットワークケーブルに接続した状態で、電源を投入すると下のような起動情報が出力されるはずです。
+JH7110のMars/Mars-CMボードをシリアルケーブル、ネットワークケーブルに接続した状態で、電源を投入すると下のような起動情報が出力されるはずです。
 
 ```
 U-Boot SPL 2021.10 (Oct 31 2022 - 12:11:37 +0800)
