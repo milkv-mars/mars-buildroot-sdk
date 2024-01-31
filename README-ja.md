@@ -1,7 +1,7 @@
 [English](./README.md) | [日本語](./README-ja.md)
 # Milk-V Mars/Mars-CM SDK
 
-これは`StarFiveTech` `JH7110`向けの完全なRISC-Vクロスコンパイルツールチェーンをビルドします。
+これは`StarFiveTech JH7110`向けの完全なRISC-Vクロスコンパイルツールチェーンをビルドします。
 `JH7110`チップの`Milk-V Mars`と`Mars CM`向けのU-Boot SPL、U-Boot、OpenSBI、平坦化イメージツリー(FIT)イメージ、Linuxカーネル、デバイスツリー、RAMディスクとrootfsイメージも一緒にビルドします。
 
 ## 前提条件
@@ -20,7 +20,7 @@ mtools kpartx rsync
 ```
 
 
-## コード命令の取得 ##
+## SDKの取得 ##
 
 このリポジトリを確認
 
@@ -419,6 +419,6 @@ tftpサーバーを準備します。たとえば、ubuntu向けであれば、`
 
 ## 付録4: ブートローダーの回復
 
-SPLとU-Bootはボード上のSPIフラッシュに格納されています。誤って内容を吹き飛ばしてしまったり、フラッシュのデータの破損に遭遇するかもしれません。その場合はブートローダーを回復します。
+SPLとU-Bootはボード上のSPIフラッシュに格納されています。誤って内容を吹き飛ばしてしまったり、あるいはフラッシュのデータの破損に遭遇するかもしれません。その場合はブートローダーを回復します。
 
 詳しくは https://github.com/starfive-tech/Tools を確認してください。
