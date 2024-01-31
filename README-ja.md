@@ -1,4 +1,4 @@
-[English](./README.md) | [日本語](./README-ja.md)
+[English](./README.md) | 日本語
 # Milk-V Mars/Mars-CM SDK
 
 これは`StarFiveTech JH7110`向けの完全なRISC-Vクロスコンパイルツールチェーンをビルドします。
