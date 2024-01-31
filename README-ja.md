@@ -1,13 +1,14 @@
-English | [日本語](./README-ja.md)
+[English](./README.md) | 日本語
 # Milk-V Mars/Mars-CM SDK
 
-This builds a complete RISC-V cross-compile toolchain for the `StarFiveTech` `JH7110` SoC. It also builds U-boot SPL, U-boot and a flattened image tree (FIT) image with a Opensbi binary, linux kernel, device tree, ramdisk image and rootfs image for the `JH7110` `Milk-V Mars` and `Mars CM` board.
+これは`StarFiveTech JH7110`向けの完全なRISC-Vクロスコンパイルツールチェーンをビルドします。
+`JH7110`チップの`Milk-V Mars`と`Mars CM`向けのU-Boot SPL、U-Boot、OpenSBI、平坦化イメージツリー(FIT)イメージ、Linuxカーネル、デバイスツリー、RAMディスクとrootfsイメージも一緒にビルドします。
 
-## Prerequisites
+## 前提条件
 
-Recommend OS: Ubuntu 16.04/18.04/20.04/22.04 x86_64
+推奨OS: Ubuntu 16.04/18.04/20.04/22.04 x86_64
 
-Install required additional packages:
+インストールが必要な追加のパッケージ:
 
 ```
 $ sudo apt update
@@ -18,17 +19,18 @@ libyaml-dev patchutils python3-pip zlib1g-dev device-tree-compiler dosfstools
 mtools kpartx rsync
 ```
 
-## Fetch Code Instructions ##
 
-Checkout this repository
+## SDKの取得 ##
+
+このリポジトリを確認
 
 ```
 git clone https://github.com/milkv-mars/mars-buildroot-sdk.git --depth=1
 ```
 
-This will take some time and require around 5GB of disk space.
+これにはしばらく掛かるほか、5GBのディスクスペースが必要です。
 
-Different boards use different branches
+それぞれのボードにはそれぞれのブランチを使う必要があります。
 
 - Mars
   ```
@@ -45,15 +47,15 @@ Different boards use different branches
   git checkout dev-mars-cm-sdcard
   ```
 
-## Quick Build Instructions
+## クイックビルド
 
-Below are the quick building for the initramfs image `image.fit` which could be translated to board through tftp and run on board. The completed toolchain, `u-boot-spl.bin.normal.out`, `visionfive2_fw_payload.img`, `image.fit` will be generated under `work/` directory. The completed build tree will consume about 16G of disk space.
-
+下に示すのはinitramfsのイメージである`image.fit`のクイックビルドです。`image.fit`はボード用に変換された上でtftpで転送しボード上で実行されます。
+完成したツールチェーンの`u-boot-spl.bin.normal.out`と`visionfive2_fw_payload.img`と`image.fit`は`/work`の下に出てきます。完成したビルドツリーは16GBのディスクスペースを消費します。
 ```
 $ make -j$(nproc)
 ```
 
-Then the below target files will be generated, copy files to tftp server workspace path:
+ターゲットファイルが生成されたらファイルをtftpサーバーのワークスペースにコピーします。
 
 ```
 work/
@@ -77,7 +79,7 @@ work/
     └── vmlinuz-5.15.0
 ```
 
-Additional command to config buildroot, uboot, linux, busybox:
+buildrootとubootとlinuxとbusyboxを設定するため追加のコマンド:
 
 ```
 $ make buildroot_initramfs-menuconfig   # buildroot initramfs menuconfig
@@ -88,7 +90,7 @@ $ make -C ./work/buildroot_initramfs/ O=./work/buildroot_initramfs busybox-menuc
 $ make -C ./work/buildroot_rootfs/ O=./work/buildroot_rootfs busybox-menuconfig        # for rootfs busybox menuconfig
 ```
 
-Additional command to build single package or module:
+パッケージとモジュールをビルドするための追加のコマンド:
 
 ```
 $ make vmlinux   # build linux kernel
@@ -96,9 +98,8 @@ $ make -C ./work/buildroot_rootfs/ O=./work/buildroot_rootfs busybox-rebuild   #
 $ make -C ./work/buildroot_rootfs/ O=./work/buildroot_rootfs ffmpeg-rebuild    # build ffmpeg package
 ```
 
-## Running on JH7110 Mars/Mars-CM Board via Network
-
-After the JH7110 Mars/Mars-CM Board is properly connected to the serial port cable, network cable and power cord, turn on the power from the wall power socket to power and you will see the startup information as follows:
+## ネットワーク経由でJH7110のMars/Mars-CMボードで実行する
+JH7110のMars/Mars-CMボードをシリアルケーブル、ネットワークケーブルに接続した状態で、電源を投入すると下のような起動情報が出力されるはずです。
 
 ```
 U-Boot SPL 2021.10 (Oct 31 2022 - 12:11:37 +0800)
@@ -188,49 +189,47 @@ Hit any key to stop autoboot:  0
 StarFive # 
 ```
 
-Then press any key to stop and enter uboot terminal, there are two way to boot the board
+そうしたら、任意のキーを押してubootターミナルに入ります。ボードを起動するには2つ方法があります。
 
-#### 1. Running image.fit with the default dtb `jh7110-visionfive-v2.dtb`
+#### 1. デフォルトのDTBである`jh7110-visionfive-v2.dtb`とともに`image.fit`を実行  
 
-transfer image.fit through TFTP:
+TFTP経由でimage.fitを転送:
 
-Step1: set enviroment parameter:
-
+Step1: 環境変数を設定:
 ```
 setenv 192.168.xxx.xxx; setenv serverip 192.168.xxx.xxx;
 ```
 
-Step2: upload image file to ddr:
+Step2: ddrにイメージファイルをアップロード
 
 ```
 tftpboot ${loadaddr} image.fit;
 ```
 
-Step3: load and excute:
+Step3: 読み込んで実行
 
 ```
 bootm start ${loadaddr};bootm loados ${loadaddr};run chipa_set_linux;run cpu_vol_set; booti ${kernel_addr_r} ${ramdisk_addr_r}:${filesize} ${fdt_addr_r};
 ```
 
-When you see the `buildroot login:` message, then congratulations, the launch was successful
+`buildroot login:`のメッセージが表示されたら成功です。
 
 ```
 buildroot login:root
 Password: starfive
 ```
 
-#### 2. Running the other dtb with the Image.gz and initramfs.cpio.gz
+#### 2. 他のdtbと一緒にimage.gzとinitramfs.cpio.gzを実行
 
-If we want to loading the other dtb, e.g. `jh7110-milkv-mars-cm-sdcard.dtb`, follow the below
+もし他のdtb(`jh7110-milkv-mars-cm-sdcard.dtb`)みたいなのものを読み込みたいなら下に従ってください。
 
-Step1: set enviroment parameter:
+Step1: 環境変数を設定:
 
 ```
 setenv ipaddr 192.168.xxx.xxx; setenv serverip 192.168.xxx.xxx;
 ```
 
-Step2: upload files to ddr:
-
+Step2: ddrにイメージファイルをアップロード:
 ```
 tftpboot ${fdt_addr_r} jh7110-milkv-mars-cm-sdcard.dtb;
 tftpboot ${kernel_addr_r} Image.gz;
@@ -238,26 +237,31 @@ tftpboot ${ramdisk_addr_r} initramfs.cpio.gz;
 run chipa_set_linux;run cpu_vol_set;
 ```
 
-Step3: load and excute:
+Step3: 読み込んで実行:
 
 ```
 booti ${kernel_addr_r} ${ramdisk_addr_r}:${filesize} ${fdt_addr_r}
 ```
-
-When you see the `buildroot login:` message, then congratulations, the launch was successful
+`buildroot login:`のメッセージが表示されたら成功です。
 
 ```
 buildroot login:root
 Password: starfive
 ```
 
-## APPENDIX I: Generate Booting SD Card
+***
 
-If you don't already use a local tftp server, then you probably want to make the TF card target; the default size is 16 GBs. **NOTE THIS WILL DESTROY ALL EXISTING DATA** on the target TF card; The `GPT` Partition Table for the TF card is recommended. 
+## 付録1: 起動できるSDカードの作成
+
+もしあなたがまだローカルのtftpサーバーを使っていない場合、(Micro)SDカードをターゲットにしたいということだと思います。
+イメージのデフォルトのサイズは16GBです。
+**注意:この操作はターゲットのSDカードのデータをすべて破壊します。**
+SDカードには`GPT`パーティションテーブルをおすすめします。
 
 #### Generate SD Card Image File
+#### SDカードイメージファイルの生成
 
-We could generate a sdcard image file by the below command. The sdcard image file could be burned into sd card or tf card through `dd` command, or `rpi-imager` or `balenaEtcher` tool
+以下のコマンドでSDカードイメージを生成できます。SDカードイメージは`dd`コマンドとか`rpi-imager`や`balenaEtcher`みたいなツールで焼くことができます。
 
 ```
 $ make -j$(nproc)
@@ -265,27 +269,25 @@ $ make buildroot_rootfs -j$(nproc)
 $ make img
 ```
 
-The output file `work/sdcard.img`  will be generated.
+出力は`work/sdcard.img`に出てきます。
 
-#### Burn Image File to SD Card
+#### SDカードイメージを焼く
 
-The `sdcard.img` can be burn into a tf card. e.g. through `dd` command as below
+`sdcard.img`はSDカードに焼き込むことができます。たとえば、`dd`コマンドであれば、下のようになります。
 
 ```
 $ sudo dd if=work/sdcard.img of=/dev/sdX bs=4096
 $ sync
 ```
 
-Then extend the tf card rootfs partition if needed. There are two ways to implement it. 
+あとからrootfsパーティションを拡張する場合、2つの方法があります。
 
-The first way could be done on Ubuntu host, need to install the below package:
-
+1つ目の方法はUbuntuホストでできる方法です。下に必要なパッケージを示します。
 ```
 $ sudo apt install cloud-guest-utils e2fsprogs 
 ```
 
-Then insert the tf card to Ubuntu host, run the below, note `/dev/sdX` is the tf card device.
-
+SDカードをUbuntuホストに挿入して、以下のコマンドの`/dev/sdX`の部分は挿入したSDカードに置き換えてください。
 ```
 $ sudo growpart /dev/sdX 4  # extend partition 4
 $ sudo e2fsck -f /dev/sdX4
@@ -293,7 +295,7 @@ $ sudo resize2fs /dev/sdX4  # extend filesystem
 $ sudo fsck.ext4 /dev/sdX4
 ```
 
-The second way could be done on Mars/Mars-CM board, use fdisk and resize2fs command：
+2つ目の方法はMars/Mars-CM boardで行えるものです。fdiskとresize2fsコマンドを使います：
 
 ```
 Mars:    /dev/mmcblk1
@@ -338,9 +340,8 @@ old_desc_blocks = 2, new_desc_blocks = 118
 The filesystem on /dev/mmcblk1p4 is now 30859756 (1k) blocks long.
 ```
 
-If you need to add a new partition, such as a swap partition (here we do set the rest of disk space to swap partition,
-but normally swap partition size should be the same as DDR size or double of DDR size),
-you can use the following shell script afer the image running on board:
+もしswap用とかの新しいパーティションが必要な場合は、以下のシェルスクリプトを実行することで可能です。
+ここでは、残りのディスクスペースのすべてをswapに割り当てていますが、通常の場合はメインメモリのサイズと同じかその2倍にしてください:
 
 ```bash
 #!bin/sh
@@ -366,8 +367,8 @@ swapoff -a
 swapon /dev/mmcblk0p5
 ```
 
-## APPENDIX II: Using DTB Overlay Dynamically
-The system support loading dtb overlay dynamically when the board is running. Run below on board:
+## 付録2: 動的にDTBオーバーレイを使う
+システムはボード実行中のDTBの動的な読み込みをサポートします。ボードで以下を実行：
 
 ```
 # mount -t configfs none /sys/kernel/config
@@ -376,48 +377,48 @@ The system support loading dtb overlay dynamically when the board is running. Ru
 # cat vf2-overlay-uart3-i2c.dtbo > /sys/kernel/config/device-tree/overlays/dtoverlay/dtbo
 ```
 
-Additional, you could remove the dtbo feature:
+追加で、DTBオーバーレイを削除できます。
 
 ```
 # rmdir /sys/kernel/config/device-tree/overlays/dtoverlay
 ```
 
-## APPENDIX III: Updating SPL and U-Boot binaries Under U-boot
+## 付録3: U-boot環境下でのSPLとU-bootバイナリのアップデート
 
-Prepare the tftp sever. e.g. `sudo apt install tftpd-hpa` for Ubuntu host.
+tftpサーバーを準備します。たとえば、ubuntu向けであれば、`sudo apt install tftpd-hpa`でできます。
 
-1. Power on the Mars/Mars-CM board and wait until enters the u-boot command line
+1. Mars/Mars-CMの電源を入れてU-bootコマンドラインに入るまで待つ
 
-2. Configure the environment variables by executing:
+2. 次のように環境変数を設定：
 
    ```
    StarFive # setenv ipaddr 192.168.120.222;setenv serverip 192.168.120.99
    ```
 
-3. Check the connectivity by pinging the host PC from evaluation board;
+3. ボードからホストPCにpingして接続を確認
 
-4. Initialize SPI flash:
+4. SPIフラッシュを初期化
 
    ```
    StarFive # sf probe
    ```
 
-5. Update SPL binary
+5. SPLバイナリをアップデート
 
    ```
    StarFive # tftpboot ${loadaddr}  u-boot-spl.bin.normal.out
    StarFive # sf update ${loadaddr} 0x0 $filesize
    ```
 
-6. Update U-Boot binary
+6. U-Bootバイナリをアップデート
 
    ```
    StarFive # tftpboot ${loadaddr}  visionfive2_fw_payload.img
    StarFive # sf update ${loadaddr} 0x100000 $filesize
    ```
 
-## APPENDIX IV: Recovering Bootloader 
+## 付録4: ブートローダーの回復
 
-The SPL and U-Boot are stored inside the SPI flash on board. There may be situations where you accidentally emptied the flash or if the flash is damaged on your board. In these situations, it's better to recover the bootloader. 
+SPLとU-Bootはボード上のSPIフラッシュに格納されています。誤って内容を吹き飛ばしてしまったり、あるいはフラッシュのデータの破損に遭遇するかもしれません。その場合はブートローダーを回復します。
 
-Please jump to https://github.com/starfive-tech/Tools for more details
+詳しくは https://github.com/starfive-tech/Tools を確認してください。
